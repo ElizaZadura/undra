@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-06T14:39:49.985061+00:00",
+  "generated_at": "2026-08-06T14:46:08.190417+00:00",
   "note": "Redacted dump of the operating ledger. Payments detail and recipient columns are omitted; see runner/ledger.py. The authoritative ledger lives only on the lab box.",
   "tables": {
     "actions": [],
@@ -43,6 +43,13 @@
         "id": 6,
         "started_at": "2026-08-06T14:39:49.844696+00:00",
         "ended_at": "2026-08-06T14:39:49.942998+00:00",
+        "status": "idle",
+        "handoff": "Stub cycle: no model was called. The runner path was exercised end to end and the ledger was written."
+      },
+      {
+        "id": 7,
+        "started_at": "2026-08-06T14:46:08.088526+00:00",
+        "ended_at": "2026-08-06T14:46:08.165051+00:00",
         "status": "idle",
         "handoff": "Stub cycle: no model was called. The runner path was exercised end to end and the ledger was written."
       }
@@ -374,6 +381,27 @@
       {
         "id": 44,
         "at": "2026-08-06T14:39:49.910004+00:00",
+        "level": "info",
+        "source": "tool",
+        "message": "finish_cycle({\"handoff\": \"Stub cycle: no model was called. The runner path was exercised end to end and the ledger was written.\"}) -> {\"status\": \"cycle_will_end\", \"handoff_recorded\": true}"
+      },
+      {
+        "id": 45,
+        "at": "2026-08-06T14:39:49.988974+00:00",
+        "level": "info",
+        "source": "dump",
+        "message": "redacted ledger dump written: {'actions': 0, 'cycles': 6, 'decisions': 2, 'events': 44, 'flags': 1, 'human_requests': 1, 'llm_usage': 11, 'objectives': 5, 'open_questions': 3, 'outbound': 0, 'payments': 0, 'spend': 0}"
+      },
+      {
+        "id": 46,
+        "at": "2026-08-06T14:46:07.981941+00:00",
+        "level": "warn",
+        "source": "situation_report",
+        "message": "halted=False breaches=1 unknowns=1"
+      },
+      {
+        "id": 47,
+        "at": "2026-08-06T14:46:08.140509+00:00",
         "level": "info",
         "source": "tool",
         "message": "finish_cycle({\"handoff\": \"Stub cycle: no model was called. The runner path was exercised end to end and the ledger was written.\"}) -> {\"status\": \"cycle_will_end\", \"handoff_recorded\": true}"

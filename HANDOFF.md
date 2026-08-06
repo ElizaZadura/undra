@@ -140,13 +140,37 @@ distinct: infra on credit, Coral's model spend on Prepay.
   daily planning call falls back to `planning_fallback` unless it runs on a
   billed key. Note this 429 is *permanent*, not a rate limit: retrying with
   backoff will never succeed.
-- The paid key returns **429 RESOURCE_EXHAUSTED, "Your prepayment credits are
-  depleted"** on *every* model. The Cloud billing account attached to `undra`
-  pays for Cloud Run and the rest of the infra, but the **Gemini Developer API
-  bills against a separate prepaid balance**, which is at zero. Attaching a
-  billing account does not fund it. Until that balance is topped up at
-  ai.studio, the deployed app cannot make its Gemini call — which is
-  `CHARTER.md` §1 definition-of-done item 2 and a competition requirement.
+- The paid key initially returned **429 RESOURCE_EXHAUSTED, "Your prepayment
+  credits are depleted"** on *every* model. **Resolved 2026-08-06** by a 250 SEK
+  prepaid top-up; all three configured models now return 200, Pro included.
+
+**How the billing actually works here, since it cost an afternoon:**
+
+There are three separate pots and none of them funds the next:
+
+1. **Cloud billing account** — pays for Cloud Run, Build, Artifact Registry,
+   Secret Manager, egress.
+2. **Free trial credit** — 2910.57 SEK, sitting on `My Billing Account`
+   (`01E0FA-16AE45-963492`), valid to **2026-11-04**. It is a
+   `FreeTrialUpgrade` credit, meaning that account was upgraded from trial to
+   full paid on 2026-08-06 and the unused balance carried over. It covers Cloud
+   products but is **excluded from the Gemini Developer API**.
+3. **Gemini Developer API prepaid balance, per project** — what an API key
+   actually draws down. Funded only by an explicit top-up.
+
+`undra` is linked to `My Billing Account` so the trial credit pays the hosting
+bill. Coral's other billing account (`012486-2FCE2D-F95B75`, org
+`coral-at-red-org`) holds no credit and is not the one to use.
+
+Two projects is not an accident of the key-creation UI, and both must stay:
+tier is a property of the *project*, not the key, so a single project cannot
+serve both a free-tier key and a paid one. `undra-free` must have **no billing
+account linked** or the ops loop silently becomes paid and the free-tier cost
+model above stops being true.
+
+New Google accounts appear to get prepay where established ones were
+grandfathered onto pay-as-you-go; that is why Eliza's own projects behave
+differently from Coral's. Not a misconfiguration.
 
 Spend protection is now three independent layers, which is deliberate — each
 catches what the others miss:

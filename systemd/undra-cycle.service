@@ -1,0 +1,32 @@
+[Unit]
+Description=Undra agent cycle (one cycle, then exit)
+Documentation=file:///srv/lab/undra/AGENTS.md
+After=network-online.target docker.service
+Wants=network-online.target
+Requires=docker.service
+
+[Service]
+Type=oneshot
+User=elz
+Group=elz
+WorkingDirectory=/srv/lab/undra
+ExecStart=/srv/lab/undra/bin/run-cycle.sh
+
+# Set to 1 once the GitHub remote is configured and you want the audit trail
+# pushed offsite each cycle. Left off by default: pushing is outward-facing.
+Environment=UNDRA_PUSH=0
+
+# A cycle that has not finished in 20 minutes is wedged. The watchdog counts
+# staleness separately (max_hours_without_cycle = 6), but a hung container
+# would otherwise hold the timer's next run off indefinitely.
+TimeoutStartSec=1200
+
+# Deliberately NOT Restart=on-failure. A crash-looping agent is precisely what
+# invariants.toml max_repeated_action_failures exists to catch, and systemd
+# retrying underneath the watchdog would hide the signal it depends on.
+
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,26 @@
+[Unit]
+Description=Undra agent cycle every 4 hours
+Documentation=file:///srv/lab/undra/invariants.toml
+
+[Timer]
+# invariants.toml [staleness] cycle_interval_hours = 4, which is 6 cycles/day.
+# max_hours_without_cycle = 6 must stay ABOVE this or the watchdog fires on
+# every normal gap. If you change one, change the other.
+#
+# UTC, because the box is deliberately on UTC: during the October changeover
+# 02:00-03:00 happens twice locally and anything scheduled in it runs twice,
+# while in March that hour does not exist and is skipped (LAB_SETUP.md §2.3).
+OnCalendar=*-*-* 00,04,08,12,16,20:10:00 UTC
+
+# Fire on resume if the box was asleep or off when a run was due. A home box
+# loses power; the run it missed still wants to happen.
+Persistent=true
+
+# Stagger slightly so six timers a day do not all land on the same second as
+# whatever else the box runs.
+RandomizedDelaySec=180
+
+AccuracySec=1m
+
+[Install]
+WantedBy=timers.target

@@ -161,12 +161,19 @@ def mark_sent(ledger, now: datetime | None = None) -> None:
     ledger.con.commit()
 
 
-def send_if_due(ledger, cfg, telegram, *, hour_utc: int = 6) -> bool:
-    """Send once per day, at or after `hour_utc`.
+def send_if_due(ledger, cfg, telegram, *, hour_utc: int = 4) -> bool:
+    """Send once per day, on the first cycle at or after `hour_utc`.
 
-    Timed off UTC because the box is on UTC deliberately (LAB_SETUP.md §2.3);
-    06:00Z is 08:00 in Stockholm in summer, 07:00 in winter — morning either way,
-    which is what matters for something meant to be read over coffee.
+    The threshold is not the delivery time — the timer is, and it fires at
+    00:11, 04:11, 08:11, 12:11, 16:11 and 20:11 UTC. A threshold of 6 therefore
+    delivered on the 08:11 cycle, which is 10:11 in Stockholm: too late to be a
+    morning briefing. 4 lands it on the 04:11 cycle instead, 06:11 local in
+    summer and 05:11 in winter.
+
+    Winter is the thing to watch. If a 05:11 buzz is unwelcome, raise this to 6
+    rather than trying to be clever about local time: the box is deliberately on
+    UTC (LAB_SETUP.md §2.3) precisely so that scheduled work does not run twice
+    or not at all across a DST changeover.
     """
     now = datetime.now(timezone.utc)
     if now.hour < hour_utc or not due(ledger, now):

@@ -339,20 +339,72 @@ def t_jules_file_task(ctx: ToolContext, *, title: str, prompt: str,
 
 
 def t_jules_task_status(ctx: ToolContext, *, session_id: str) -> dict:
-    """Check a filed build task. Read-only."""
+    """Check a filed build task. Read-only.
+
+    `state` alone is misleading and cost a cycle on 2026-08-06: a session whose
+    plan has been generated and is awaiting the Operator's approval reports
+    COMPLETED, which was read as "the work is finished" and led to a follow-up
+    task being filed on a false premise. The state string is therefore reported
+    alongside an explicit reading of what has actually happened.
+    """
     try:
         session = ctx.jules().session(session_id)
     except Exception as exc:  # noqa: BLE001
         raise ToolError(f"could not read session {session_id}: {exc}") from None
+
     activities = []
+    kinds: list[str] = []
     try:
-        activities = [a.get("description") or a.get("type") or str(a)[:120]
-                      for a in ctx.jules().activities(session_id)][-6:]
+        raw = ctx.jules().activities(session_id)
+        for a in raw:
+            kinds.extend(k for k in a if k not in ("name", "createTime",
+                                                   "originator", "id"))
+        activities = [", ".join(k for k in a if k not in
+                                ("name", "createTime", "originator", "id"))
+                      for a in raw][-6:]
     except Exception:  # noqa: BLE001
         pass
+
+    state = session.get("state") or session.get("status") or "UNKNOWN"
+    plan_only = "planGenerated" in kinds and not any(
+        k in kinds for k in ("pullRequestCreated", "changesSubmitted",
+                             "codeChanged", "planApproved"))
+
+    # A session can report COMPLETED having produced only a plan, or having run
+    # and left nothing in the repository. Verified 2026-08-06: session
+    # 1652844863819652924 reported COMPLETED with planApproved, artifacts and
+    # sessionCompleted activities, and yet created no branch and no PR. The
+    # authoritative test is therefore what exists in the repo, not what the
+    # session says about itself (CHARTER.md §6.6 — name the commit).
+    produced_pr = any(k in kinds for k in ("pullRequestCreated", "changesSubmitted"))
+
+    if plan_only:
+        reading = ("PLAN ONLY — Jules produced a plan and is waiting for the "
+                   "Operator to approve it. No code has been written. Do NOT "
+                   "treat this as finished work and do NOT file follow-up tasks "
+                   "that depend on it. If it has waited a long time, that is a "
+                   "request_human, not a new task.")
+    elif state.upper() in ("COMPLETED", "FINISHED", "SUCCEEDED") and not produced_pr:
+        reading = ("Jules reports this session finished BUT no pull request or "
+                   "submitted change is visible in its activity. Completed is not "
+                   "the same as delivered. Before depending on this or filing "
+                   "follow-up work, confirm a branch or PR exists in the "
+                   "repository; if none does, the task did not land and re-filing "
+                   "it with more specific instructions is the correct move "
+                   "(CHARTER.md §6.6).")
+    elif state.upper() in ("COMPLETED", "FINISHED", "SUCCEEDED"):
+        reading = ("Session finished and reports a submitted change. Confirm the "
+                   "pull request before treating the work as merged.")
+    else:
+        reading = f"Session state is {state}. Still in progress; do not re-file it."
+
     return {"session_id": session_id,
-            "state": session.get("state") or session.get("status"),
+            "raw_state": state,
+            "what_this_means": reading,
+            "awaiting_plan_approval": plan_only,
             "title": session.get("title"),
+            "url": session.get("url"),
+            "activity_kinds": sorted(set(kinds)),
             "recent_activity": activities}
 
 

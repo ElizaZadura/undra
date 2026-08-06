@@ -363,3 +363,25 @@ def has_key(role: str) -> bool:
         return True
     except (KeyError, RuntimeError):
         return False
+
+
+# Wording that means the DAILY quota is gone rather than the per-minute one.
+# Distinct from classify_429(): that decides retry-or-not, this decides
+# switch-keys-or-not. A per-minute limit resolves in seconds and the backoff
+# handles it; a spent daily quota does not resolve until Google's reset.
+_DAILY_QUOTA_HINTS = ("per day", "perday", "requests per day", "daily limit",
+                      "generaterequestsperdayperprojectpermodel")
+
+
+def is_quota_exhausted(exc: Exception) -> bool:
+    """True when a 429 looks like an exhausted allowance rather than pacing.
+
+    Deliberately broad: after MAX retries with correct backoff, a 429 that is
+    still failing is not a pacing problem whatever it calls itself. The cost of
+    a false positive is one cycle billed to the paid key at about five cents.
+    The cost of a false negative is a dead cycle and a stalled loop overnight.
+    """
+    text = str(exc).lower()
+    if "429" not in text and "resource_exhausted" not in text:
+        return False
+    return True

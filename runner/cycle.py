@@ -209,8 +209,37 @@ def run(*, stub_model: bool = False, use_telegram: bool = True) -> int:
 
     handoff = ""
     try:
-        handoff = _agent_loop(ctx, client, model, report, plan,
-                              stub_model=stub_model)
+        try:
+            handoff = _agent_loop(ctx, client, model, report, plan,
+                                  stub_model=stub_model)
+        except llm.TransientModelError as exc:
+            # The free tier's daily allowance is gone. Retrying with backoff
+            # cannot fix that — it does not reset until Google's clock rolls
+            # over, which can be many hours away, and the cycles in between
+            # would all die the same way. The paid key is already in this
+            # container for the planning call, so fall back to it rather than
+            # lose the night. Logged loudly: the free-tier shortfall is a real
+            # finding about the cost model and must not be silently absorbed.
+            if stub_model or not llm.is_quota_exhausted(exc) \
+                    or not llm.has_key("planning"):
+                raise
+            led.event("warn", "llm",
+                      f"free-tier quota exhausted on {model}; falling back to the "
+                      f"paid key for the rest of this cycle. Free-tier capacity is "
+                      f"smaller than HANDOFF.md §4 assumed — this costs real money "
+                      f"and should be reviewed. Error: {str(exc)[:200]}")
+            paid_client = llm.Gemini(
+                llm.api_key("planning"),
+                on_usage=lambda u: led.llm_usage(
+                    model=u.model, input_tokens=u.input_tokens,
+                    output_tokens=u.output_tokens, thinking_tokens=u.thinking_tokens,
+                    total_tokens=u.total_tokens, usd_est=u.usd_est, cycle_id=cyc.id),
+                on_event=lambda level, msg: led.event(level, "llm", msg),
+            )
+            handoff = _agent_loop(ctx, paid_client, model, report, plan,
+                                  stub_model=False)
+            handoff = ("[This cycle fell back to the paid API key: the free tier's "
+                       "daily quota was exhausted.] " + handoff)
     except Halted:
         cyc.note_halted()
         handoff = ("Halt flag was set mid-cycle. Stopped immediately without "

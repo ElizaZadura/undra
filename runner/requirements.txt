@@ -1,0 +1,4 @@
+# Deliberately minimal. Telegram, Jules and GitHub are reached with stdlib
+# urllib rather than SDKs: three fewer dependencies that can move under us
+# during a two-week run, and the request shapes are simple.
+google-genai>=1.0,<2

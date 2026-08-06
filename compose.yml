@@ -1,5 +1,56 @@
+# One network per project (LAB_SETUP.md Phase 3): the structural version of
+# "never touch anything outside your assigned scope". Project two cannot reach
+# this ledger because there is no route between them.
+
+name: undra
+
 services:
+  # The operator loop. Invoked once per cycle by the systemd timer on `red`,
+  # runs one cycle, exits. Not a daemon, and not restarted automatically —
+  # a crash-looping agent is exactly what the watchdog exists to prevent.
   ops:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: undra-ops:latest
     env_file: env/ops.env
+    environment:
+      # Developer API, not Vertex: no service account, no Cloud IAM.
+      # Vertex/Agent Platform is explicitly out of scope (HANDOFF.md §5).
+      GOOGLE_GENAI_USE_VERTEXAI: "FALSE"
+      INVARIANTS_PATH: /app/invariants.toml
+      REPORT_DIR: /app/reports
+    volumes:
+      # The repo itself: the ledger, the reports and docs the runner writes,
+      # and the git metadata situation_report.py reads for git_head.
+      - ./:/app
+      # ...except env/, which is mounted per-service below. The ops container
+      # gets ops.env only; app.env is not visible to it at all.
+      - ./env/ops.env:/app/env/ops.env:ro
+    networks: [undra]
+    restart: "no"
+
+  # The deployed product runs on Cloud Run, not here (HANDOFF.md §5). This
+  # service exists to build and exercise that image locally before deploying.
+  #
+  # It gets env/app.env and ONLY env/app.env. CHARTER.md §3 relies on the
+  # free-tier key being ABSENT from the container that handles user data, not
+  # merely forbidden — free-tier prompts may be used for training and the
+  # Operator is the data controller. Do not add ops.env here for convenience.
   app:
+    profiles: ["app"]          # not started by a bare `docker compose up`
+    build:
+      context: .
+      dockerfile: app/Dockerfile
+    image: undra-app:latest
     env_file: env/app.env
+    environment:
+      GOOGLE_GENAI_USE_VERTEXAI: "FALSE"
+    ports: ["8080:8080"]
+    networks: [undra]
+    restart: "no"
+
+networks:
+  undra:
+    name: undra
+    external: true          # created in LAB_SETUP.md Phase 3

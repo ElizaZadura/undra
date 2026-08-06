@@ -5,7 +5,11 @@
     "defaultMode": "acceptEdits",
 
     "allow": [
-      "Bash(git init:*)",
+      "Bash(bin/with-env:*)",
+      "Bash(./bin/with-env:*)",
+      "Bash(bin/status:*)",
+      "Bash(./bin/status:*)",
+
       "Bash(git status:*)",
       "Bash(git add:*)",
       "Bash(git commit:*)",
@@ -18,55 +22,95 @@
       "Bash(git rev-parse:*)",
       "Bash(git check-ignore:*)",
       "Bash(git ls-files:*)",
+      "Bash(git ls-tree:*)",
       "Bash(git config:*)",
       "Bash(git remote:*)",
+      "Bash(git fetch:*)",
+      "Bash(git grep:*)",
+      "Bash(git stash:*)",
+      "Bash(git restore:*)",
 
       "Bash(python3:*)",
       "Bash(python:*)",
       "Bash(pip:*)",
       "Bash(pip3:*)",
+      "Bash(bash:*)",
+      "Bash(timeout:*)",
 
       "Bash(docker:*)",
       "Bash(docker compose:*)",
 
+      "Bash(systemctl list-timers:*)",
+      "Bash(systemctl status:*)",
+      "Bash(systemctl is-enabled:*)",
+      "Bash(systemctl is-active:*)",
+      "Bash(systemctl cat:*)",
+      "Bash(systemctl show:*)",
+      "Bash(journalctl:*)",
+
       "Bash(ls:*)",
+      "Bash(cd:*)",
       "Bash(mkdir:*)",
       "Bash(mv:*)",
       "Bash(cp:*)",
       "Bash(chmod:*)",
+      "Bash(touch:*)",
+      "Bash(cat:*)",
+      "Bash(sed:*)",
+      "Bash(awk:*)",
+      "Bash(printf:*)",
+      "Bash(echo:*)",
       "Bash(grep:*)",
       "Bash(rg:*)",
       "Bash(find:*)",
       "Bash(head:*)",
       "Bash(tail:*)",
+      "Bash(sort:*)",
+      "Bash(uniq:*)",
       "Bash(wc:*)",
+      "Bash(diff:*)",
       "Bash(file:*)",
       "Bash(stat:*)",
       "Bash(which:*)",
       "Bash(hostname:*)",
       "Bash(date:*)",
-      "Bash(sqlite3:*)"
+      "Bash(id:*)",
+      "Bash(df:*)",
+      "Bash(free:*)",
+      "Bash(uptime:*)",
+      "Bash(ip:*)",
+      "Bash(sqlite3:*)",
+      "Bash(jq:*)"
     ],
 
     "ask": [
       "Bash(git push:*)",
       "Bash(git reset:*)",
       "Bash(git rebase:*)",
+      "Bash(git merge:*)",
       "Bash(git filter-branch:*)",
       "Bash(sudo:*)",
-      "Bash(systemctl:*)",
+      "Bash(systemctl start:*)",
+      "Bash(systemctl stop:*)",
+      "Bash(systemctl restart:*)",
+      "Bash(systemctl enable:*)",
+      "Bash(systemctl disable:*)",
       "Bash(systemd-run:*)",
       "Bash(nft:*)",
       "Bash(rm:*)",
       "Bash(curl:*)",
-      "Bash(wget:*)"
+      "Bash(wget:*)",
+      "Bash(apt:*)",
+      "Bash(apt-get:*)"
     ],
 
     "deny": [
       "Read(./env/**)",
       "Read(./ledger.db)",
       "Bash(git push --force:*)",
-      "Bash(git push -f:*)"
+      "Bash(git push -f:*)",
+      "Bash(cat env/*)",
+      "Bash(grep * env/*)"
     ]
   }
 }

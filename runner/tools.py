@@ -554,7 +554,34 @@ def t_merge_pull_request(ctx: ToolContext, *, number: int,
     return {"status": "merged", "pr": number}
 
 
+def t_list_repo_files(ctx: ToolContext, *, ref: str = "main") -> dict:
+    """What is already on a branch. Read this BEFORE commissioning work.
+
+    read_pull_request shows what a PR changes, not what the branch it targets
+    already contains — so "this file is missing" from a PR diff means missing
+    *from the PR*, which is not the same thing. Getting that wrong on
+    2026-08-06 produced a duplicate CI workflow and a merge conflict.
+    """
+    try:
+        paths = ctx.github().tree(ref)
+    except Exception as exc:  # noqa: BLE001
+        raise ToolError(f"could not list {ref}: {exc}") from None
+    return {"ref": ref, "count": len(paths), "files": sorted(paths)[:200]}
+
+
+def t_read_repo_file(ctx: ToolContext, *, path: str, ref: str = "main") -> dict:
+    """Read one file as it exists on a branch."""
+    try:
+        body = ctx.github().file(path, ref)
+    except Exception as exc:  # noqa: BLE001
+        raise ToolError(f"could not read {path} on {ref}: {exc}") from None
+    return {"path": path, "ref": ref, "truncated": len(body) > 20000,
+            "content": body[:20000]}
+
+
 TOOL_IMPLS: dict[str, Callable[..., dict]] = {
+    "list_repo_files": t_list_repo_files,
+    "read_repo_file": t_read_repo_file,
     "list_pull_requests": t_list_pull_requests,
     "read_pull_request": t_read_pull_request,
     "comment_on_pull_request": t_comment_on_pull_request,
@@ -659,6 +686,22 @@ def declarations() -> list[dict]:
                        "filing a new one — you have no memory of previous "
                        "cycles and will otherwise file the same task again."),
           parameters={"type": "object", "properties": {}}),
+
+        S(name="list_repo_files",
+          description=("Every file on a branch, main by default. Check this "
+                       "BEFORE filing build work: a PR diff shows what the PR "
+                       "changes, not what the branch already has, so 'missing "
+                       "from the diff' does not mean 'missing from the repo'."),
+          parameters={"type": "object", "properties": {
+              "ref": {"type": "string", "description": "Branch. Default main."},
+          }}),
+
+        S(name="read_repo_file",
+          description="Read one file as it exists on a branch.",
+          parameters={"type": "object", "properties": {
+              "path": {"type": "string"},
+              "ref": {"type": "string", "description": "Branch. Default main."},
+          }, "required": ["path"]}),
 
         S(name="list_pull_requests",
           description=("Pull requests in the repository. Jules tasks become PRs, "

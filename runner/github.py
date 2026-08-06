@@ -84,6 +84,26 @@ class GitHub:
             return diff[:MAX_DIFF_BYTES], True
         return diff, False
 
+    def tree(self, ref: str = "main") -> list[str]:
+        """Every path on a branch.
+
+        Without this an agent can read pull requests but not the branch they
+        target, so it cannot tell "this file does not exist" from "this file
+        does not exist *in this PR*". On 2026-08-06 that produced a duplicate
+        .github/workflows/ci.yml and a merge conflict: the file had been on main
+        for four hours, and the only visible evidence said it was missing.
+        """
+        data = self._call("GET", f"git/trees/{urllib.parse.quote(ref)}?recursive=1")
+        return [t["path"] for t in data.get("tree", []) if t["type"] == "blob"]
+
+    def file(self, path: str, ref: str = "main") -> str:
+        import base64
+        data = self._call(
+            "GET", f"contents/{urllib.parse.quote(path)}?ref={urllib.parse.quote(ref)}")
+        if isinstance(data, dict) and data.get("content"):
+            return base64.b64decode(data["content"]).decode("utf-8", errors="replace")
+        raise GitHubError(f"{path} is not a readable file on {ref}")
+
     def checks(self, sha: str) -> dict:
         """Combined CI verdict for a commit.
 

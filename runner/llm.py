@@ -170,6 +170,7 @@ class Usage:
     total_tokens: int
     usd_est: float
     priced_by_guess: bool
+    cached_tokens: int = 0
 
     @classmethod
     def from_metadata(cls, model: str, md: Any) -> "Usage":
@@ -184,6 +185,15 @@ class Usage:
         think = g("thoughts_token_count") or g("thoughtsTokenCount")
         total = g("total_token_count") or g("totalTokenCount")
 
+        # Implicit caching is documented as on by default for Gemini 2.5+, but
+        # measured zero on 2026-08-06 at a 4,365-token prompt with a stable
+        # 4,358-token system instruction, on both the free and paid keys.
+        # Captured rather than assumed: if it starts working, spend drops and we
+        # should be able to see that rather than infer it. Cached tokens bill at
+        # a discount, so counting them at full rate over-estimates — the safe
+        # direction for a figure that drives a halt.
+        cached = g("cached_content_token_count") or g("cachedContentTokenCount")
+
         # Trust the API's total. If reasoning tokens were not broken out but the
         # total exceeds the parts, the remainder IS reasoning and must be billed.
         if total and not think and total > inp + out:
@@ -192,7 +202,7 @@ class Usage:
             total = inp + out + think
 
         usd, guessed = estimate_usd(model, inp, out + think)
-        return cls(model, inp, out, think, total, usd, guessed)
+        return cls(model, inp, out, think, total, usd, guessed, cached)
 
 
 # --------------------------------------------------------------------------- #
@@ -279,6 +289,10 @@ class Gemini:
                            f"high fallback {FALLBACK_PRICING} USD/Mtok. The figure in "
                            "llm_usage is an over-estimate, not a read price. "
                            "(Logged once per model per cycle.)")
+            if usage.cached_tokens:
+                self._emit("info",
+                           f"{model}: {usage.cached_tokens} of {usage.input_tokens} "
+                           "prompt tokens served from cache")
             if self.on_usage:
                 self.on_usage(usage)
             return resp

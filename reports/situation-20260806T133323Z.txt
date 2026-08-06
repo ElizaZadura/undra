@@ -1,0 +1,72 @@
+==============================================================================
+SITUATION REPORT — 2026-08-06T13:33:23+00:00
+project: undra   invariants v1
+This is the only source of operational fact for this cycle. (CHARTER.md §6.2)
+==============================================================================
+################################################################################
+#  HALTED. Take no action. Write a state summary to the ledger and exit.       #
+#  Do not investigate why. Do not attempt to clear the flag. (CHARTER.md §10)  #
+################################################################################
+
+-- INVARIANT BREACHES --------------------------------------------------------
+  [HALT] halt_flag: PRE-LAUNCH TEST of the halt path — set by the Operator, not the watchdog
+
+-- CLOCK ---------------------------------------------------------------------
+  deadline_utc: 2026-08-17T20:00:00+00:00
+  hours_remaining: 270.4
+
+-- BUDGET --------------------------------------------------------------------
+  spend_total_usd: 0.00  [cap 60.00]
+  spend_llm_usd: 0.00
+  spend_other_usd: 0.00
+  budget_remaining_usd: 60.00
+
+-- RATE COUNTERS -------------------------------------------------------------
+  outbound_last_hour: 0  [max 3]
+  outbound_total: 0  [max 40]
+  deploys_last_hour: 0
+  cycles_last_24h: 1
+  unproductive_cycles_24h: 1  [max 3 — limits may be the bottleneck]
+
+-- LIVENESS ------------------------------------------------------------------
+  halt_flag: True  [set 2026-08-06 13:33:21: PRE-LAUNCH TEST of the halt path — set by the Operator, not the watchdog]
+  hours_since_ledger_write: 0.0  [max 6]
+  hours_since_cycle: 0.0  [max 6]
+  deploy_health: UNKNOWN (no host configured yet — nothing is deployed)
+
+-- REVENUE -------------------------------------------------------------------
+  arms_length_payments: 0
+  arms_length_gross_usd: 0.00
+  related_party_payments: 0  [must be reported separately in the submission]
+
+-- CODE ----------------------------------------------------------------------
+  git_head: b12aa36
+  git_branch: main
+  git_uncommitted_files: 6  [uncommitted work is invisible to the audit trail]
+
+-- OPEN OBJECTIVES (priority order) ------------------------------------------
+  none — the first task of this cycle is to propose an objective list
+
+-- PENDING APPROVALS (do not block on these) ---------------------------------
+  none
+
+-- OPEN QUESTIONS ------------------------------------------------------------
+  none
+
+-- LAST 5 DECISIONS (newest first) -------------------------------------------
+  none
+
+-- PREVIOUS CYCLE HANDOFF ----------------------------------------------------
+  cycle #1 (idle) 2026-08-06T13:33
+  Stub cycle: no model was called. The runner path was exercised end to end and the ledger was written.
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+UNKNOWN FACTS — you do not know these. Do not infer them, do not
+assume the favourable case, do not reuse a value from a past cycle.
+An unknown revenue figure is not zero. (CHARTER.md §6.3)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  deploy_health: UNKNOWN — no host configured yet — nothing is deployed (source: config)
+
+==============================================================================
+END OF REPORT. Anything not above is not known to you.
+==============================================================================

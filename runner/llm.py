@@ -106,26 +106,51 @@ def retry_delay_seconds(body: str) -> float | None:
 # pricing
 # --------------------------------------------------------------------------- #
 
-# CHARTER.md §6.5 forbids stating a number not read from a source, and these
-# rates are NOT read from a source at runtime — they are operator-supplied
-# assumptions used only to estimate spend. They are deliberately set high.
+# USD per million tokens, paid tier, standard (not batch).
 #
-# The cap must fail safe: over-estimating trips the watchdog early, which costs
-# a halt that can be cleared. Under-estimating spends real money past a ceiling
-# that exists precisely to stop that. When a model has no entry, FALLBACK is
-# used and an event is logged, so the guess is visible in the audit trail rather
-# than silently baked into a total.
+# READ FROM https://ai.google.dev/gemini-api/docs/pricing on 2026-08-06. These
+# are transcribed figures, not estimates — which is what CHARTER.md §6.5
+# requires before a number reaches the Operator or the submission. Re-read the
+# page rather than adjusting these by intuition; prices move.
 #
-# USD per million tokens. Verify at ai.google.dev/gemini-api/docs/pricing.
-PRICING: dict[str, tuple[float, float]] = {}          # model -> (input, output)
-FALLBACK_PRICING: tuple[float, float] = (2.00, 12.00)  # deliberate over-estimate
+# Thinking tokens bill at the OUTPUT rate on every model here, which the page
+# states explicitly. Usage.from_metadata therefore passes output+thinking.
+PRICING: dict[str, tuple[float, float]] = {          # model -> (input, output)
+    "gemini-3.6-flash":        (1.50, 7.50),
+    "gemini-3.5-flash":        (1.50, 9.00),
+    "gemini-3.5-flash-lite":   (0.30, 2.50),
+    "gemini-3.1-flash-lite":   (0.25, 1.50),
+    "gemini-3.1-pro-preview":  (2.00, 12.00),
+    "gemini-3-flash-preview":  (0.50, 3.00),
+    "gemini-3-pro-preview":    (2.00, 12.00),
+}
+
+# Some models charge more above a prompt-size threshold. Ignoring this would
+# undercount exactly when a cycle is at its most expensive — a long situation
+# report plus a full charter is how a prompt gets big.
+LARGE_PROMPT_THRESHOLD = 200_000
+LARGE_PROMPT_PRICING: dict[str, tuple[float, float]] = {
+    "gemini-3.1-pro-preview": (4.00, 18.00),
+    "gemini-3-pro-preview":   (4.00, 18.00),
+}
+
+# Used only for a model absent from the table above — a new release, or a
+# rename. Deliberately set to the most expensive entry rather than an average:
+# the cap must fail safe. Over-estimating trips the watchdog early, which costs
+# a halt that can be cleared; under-estimating spends real money past a ceiling
+# that exists precisely to stop that. Its use is always logged, so a guess is
+# visible in the audit trail rather than silently baked into a total.
+FALLBACK_PRICING: tuple[float, float] = (4.00, 18.00)
 
 
 def estimate_usd(model: str, input_tokens: int, billed_output_tokens: int
                  ) -> tuple[float, bool]:
     """Returns (usd, used_fallback). Reasoning tokens bill at the output rate,
     so callers pass output+thinking as billed_output_tokens."""
-    rates = PRICING.get(model)
+    if input_tokens > LARGE_PROMPT_THRESHOLD and model in LARGE_PROMPT_PRICING:
+        rates: tuple[float, float] | None = LARGE_PROMPT_PRICING[model]
+    else:
+        rates = PRICING.get(model)
     used_fallback = rates is None
     inp, out = rates or FALLBACK_PRICING
     usd = (input_tokens / 1_000_000) * inp + (billed_output_tokens / 1_000_000) * out

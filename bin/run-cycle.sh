@@ -84,11 +84,25 @@ fi
 
 # ------------------------------------------------------------------- 4. push
 if [ "${UNDRA_PUSH:-0}" = "1" ]; then
-  if git push -q origin HEAD 2>/dev/null; then
-    log "pushed"
+  # The PAT is read from env/ops.env (mode 600) and used in an ephemeral remote
+  # URL. Deliberately NOT stored in .git/config or a credential helper: a token
+  # written into the repo's own config is one `git config --list` from a log,
+  # and it would outlive the process that needed it.
+  # shellcheck disable=SC1091
+  set -a; . env/ops.env; set +a
+  if [ -z "${GITHUB_PERSONAL_ACCESS_TOKEN:-}" ]; then
+    log "push enabled but GITHUB_PERSONAL_ACCESS_TOKEN is unset"
+    notify "[undra] push enabled but no GitHub token found. The audit trail is committed locally but not offsite."
   else
-    log "push failed"
-    notify "[undra] git push failed. The audit trail is committed locally but not offsite."
+    REMOTE="https://x-access-token:${GITHUB_PERSONAL_ACCESS_TOKEN}@github.com/ElizaZadura/undra.git"
+    # Output is scrubbed in case git echoes the URL back on failure.
+    if git push -q "$REMOTE" HEAD:main 2>&1 | sed -E 's#https://[^@]*@#https://***@#g'; then
+      log "pushed"
+    else
+      log "push failed"
+      notify "[undra] git push failed. The audit trail is committed locally but not offsite."
+    fi
+    unset REMOTE GITHUB_PERSONAL_ACCESS_TOKEN
   fi
 else
   log "push disabled (set UNDRA_PUSH=1 to enable)"

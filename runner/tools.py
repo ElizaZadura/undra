@@ -50,12 +50,28 @@ INJECTION_MARKERS = (
 )
 
 
+# Jules free tier is 15 tasks/day (HANDOFF.md §4). Hitting the ceiling means the
+# build loop is thrashing, not that the tier is too small — so this refuses
+# rather than queues, and says why. Distinct from max_repeated_action_failures,
+# which counts failures; this counts successful filings.
+JULES_DAILY_LIMIT = 15
+
+
 @dataclass
 class ToolContext:
     cfg: Any
     ledger: Ledger
     cycle: CycleRecorder
     telegram: Any | None = None
+    _jules: Any = None
+
+    def jules(self):
+        """Lazily constructed: a cycle that never files a build task should not
+        fail because JULES_API_KEY is absent."""
+        if self._jules is None:
+            from .jules import Jules
+            self._jules = Jules()
+        return self._jules
 
 
 class ToolError(RuntimeError):
@@ -267,12 +283,102 @@ def t_finish_cycle(ctx: ToolContext, *, handoff: str,
     return {"status": "cycle_will_end", "handoff_recorded": True}
 
 
+def t_jules_file_task(ctx: ToolContext, *, title: str, prompt: str,
+                      branch: str = "main", repo: str = "") -> dict:
+    """File a build task with Jules. CHARTER.md §5 standing latitude — this is
+    ordinary work inside the assigned repository and needs no approval token.
+
+    Idempotent on (title, prompt): re-filing the same task in a later cycle is
+    refused rather than duplicated, because a stateless agent re-reading the same
+    objective list will otherwise file it again every four hours.
+    """
+    repo = repo or (ctx.cfg.allowed_repos[0] if ctx.cfg.allowed_repos else "")
+    if not repo:
+        raise ToolError("no repository configured in invariants.toml allowed_repos")
+    if repo not in ctx.cfg.allowed_repos:
+        ctx.ledger.event("warn", "scope", f"refused Jules task against {repo}")
+        raise ToolError(
+            f"{repo} is not in allowed_repos. Anything not listed there is out "
+            "of bounds (CHARTER.md §8.3).")
+    if not prompt.strip():
+        raise ToolError("prompt is required: describe the change you want made")
+
+    day_ago = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    filed = ctx.ledger.con.execute(
+        "SELECT COUNT(*) FROM actions WHERE kind='JULES_SESSION' "
+        "AND status='ok' AND at > ?", (day_ago,)).fetchone()[0]
+    if filed >= JULES_DAILY_LIMIT:
+        return {"error": f"Jules daily budget spent ({filed}/{JULES_DAILY_LIMIT}). "
+                         "Hitting this ceiling means the build loop is thrashing, "
+                         "not that the tier is too small. Review what has already "
+                         "been filed before filing more.",
+                "filed_today": filed}
+
+    from .jules import needs_plan_approval
+    plan_approval = needs_plan_approval(prompt, title)
+    key = _payload_key("JULES_SESSION", f"{repo}|{title}|{prompt}")
+
+    with ctx.ledger.action(kind="JULES_SESSION", target=f"{repo}:{title}",
+                           idempotency_key=key, cycle_id=ctx.cycle.id):
+        session = ctx.jules().create_session(
+            repo=repo, prompt=prompt, title=title, branch=branch,
+            require_plan_approval=plan_approval, ledger=ctx.ledger)
+
+    ctx.cycle.note_productive()
+    return {
+        "session_id": session.id,
+        "requires_plan_approval": plan_approval,
+        "filed_today": filed + 1,
+        "daily_limit": JULES_DAILY_LIMIT,
+        "note": ("Filed. Do not wait for it — Jules works asynchronously and a "
+                 "later cycle will see the result. Check with jules_task_status."
+                 + (" This task touches payments, auth or user data, so it needs "
+                    "plan approval before Jules will act (AGENTS.md #10)."
+                    if plan_approval else "")),
+    }
+
+
+def t_jules_task_status(ctx: ToolContext, *, session_id: str) -> dict:
+    """Check a filed build task. Read-only."""
+    try:
+        session = ctx.jules().session(session_id)
+    except Exception as exc:  # noqa: BLE001
+        raise ToolError(f"could not read session {session_id}: {exc}") from None
+    activities = []
+    try:
+        activities = [a.get("description") or a.get("type") or str(a)[:120]
+                      for a in ctx.jules().activities(session_id)][-6:]
+    except Exception:  # noqa: BLE001
+        pass
+    return {"session_id": session_id,
+            "state": session.get("state") or session.get("status"),
+            "title": session.get("title"),
+            "recent_activity": activities}
+
+
+def t_jules_list_tasks(ctx: ToolContext) -> dict:
+    """What has already been filed. Read this before filing something new —
+    a stateless agent re-reading the same objectives will otherwise duplicate."""
+    try:
+        sessions = ctx.jules().sessions()
+    except Exception as exc:  # noqa: BLE001
+        raise ToolError(f"could not list sessions: {exc}") from None
+    return {"count": len(sessions),
+            "sessions": [{"id": s.get("id") or s.get("name", "").rsplit("/", 1)[-1],
+                          "title": s.get("title"),
+                          "state": s.get("state") or s.get("status")}
+                         for s in sessions[:20]]}
+
+
 TOOL_IMPLS: dict[str, Callable[..., dict]] = {
     "log_decision": t_log_decision,
     "add_objective": t_add_objective,
     "log_open_question": t_log_open_question,
     "request_human": t_request_human,
     "fetch_url": t_fetch_url,
+    "jules_file_task": t_jules_file_task,
+    "jules_task_status": t_jules_task_status,
+    "jules_list_tasks": t_jules_list_tasks,
     "finish_cycle": t_finish_cycle,
 }
 
@@ -337,6 +443,34 @@ def declarations() -> list[dict]:
           parameters={"type": "object", "properties": {
               "url": {"type": "string"},
           }, "required": ["url"]}),
+
+        S(name="jules_file_task",
+          description=("File a coding task with Jules, which works on the "
+                       "repository asynchronously and opens a PR. This is how "
+                       "you build things — you have no shell and no git tools, "
+                       "by design. Authorised by CHARTER.md §5; no approval "
+                       "token needed. Free tier is 15 tasks/day."),
+          parameters={"type": "object", "properties": {
+              "title": {"type": "string", "description": "Short name for the task."},
+              "prompt": {"type": "string",
+                         "description": ("What you want built or changed. Be "
+                                         "specific: name files, describe the "
+                                         "acceptance condition, say what not to "
+                                         "touch. Jules cannot ask you questions.")},
+              "branch": {"type": "string", "description": "Starting branch. Default main."},
+          }, "required": ["title", "prompt"]}),
+
+        S(name="jules_task_status",
+          description="Check a task you filed earlier. Read-only.",
+          parameters={"type": "object", "properties": {
+              "session_id": {"type": "string"},
+          }, "required": ["session_id"]}),
+
+        S(name="jules_list_tasks",
+          description=("List build tasks already filed. Check this BEFORE "
+                       "filing a new one — you have no memory of previous "
+                       "cycles and will otherwise file the same task again."),
+          parameters={"type": "object", "properties": {}}),
 
         S(name="finish_cycle",
           description=("End the cycle with a written handoff. Call this last, "

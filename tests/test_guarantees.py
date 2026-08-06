@@ -242,6 +242,26 @@ class LlmTest(unittest.TestCase):
         _, guessed = estimate_usd("some-unreleased-model", 1000, 1000)
         self.assertTrue(guessed, "an unpriced model silently produced a cost figure")
 
+    def test_known_model_is_priced_from_the_table(self):
+        usd, guessed = estimate_usd("gemini-3.6-flash", 1_000_000, 1_000_000)
+        self.assertFalse(guessed)
+        self.assertAlmostEqual(usd, 1.50 + 7.50, places=4)
+
+    def test_large_prompt_tier_is_applied(self):
+        """Ignoring the >200k tier would undercount exactly when a cycle is at
+        its most expensive."""
+        small, _ = estimate_usd("gemini-3.1-pro-preview", 100_000, 1000)
+        big, _ = estimate_usd("gemini-3.1-pro-preview", 300_000, 1000)
+        self.assertAlmostEqual(small, (100_000 / 1e6) * 2.00 + (1000 / 1e6) * 12.00, places=6)
+        self.assertAlmostEqual(big, (300_000 / 1e6) * 4.00 + (1000 / 1e6) * 18.00, places=6)
+
+    def test_fallback_is_the_most_expensive_rate_not_an_average(self):
+        from runner.llm import FALLBACK_PRICING, PRICING
+        worst_in = max(p[0] for p in PRICING.values())
+        worst_out = max(p[1] for p in PRICING.values())
+        self.assertGreaterEqual(FALLBACK_PRICING[0], worst_in)
+        self.assertGreaterEqual(FALLBACK_PRICING[1], worst_out)
+
 
 if __name__ == "__main__":
     unittest.main(verbosity=2)

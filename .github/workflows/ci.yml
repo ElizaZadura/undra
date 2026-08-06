@@ -1,0 +1,68 @@
+name: CI
+
+# Exists so that CHARTER.md §5's "merge PRs that pass CI" can actually be
+# satisfied. Without a workflow the merge tool reports a verdict of "none" and
+# refuses — an absent test suite is not a passing one, so Coral cannot complete
+# the review half of its build loop until something here goes green.
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  runner-tests:
+    name: runner guarantees
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      # No dependencies: tests/test_guarantees.py is stdlib-only on purpose, and
+      # runner/llm.py defers its google-genai import into the constructor so the
+      # module can be tested without the SDK present.
+      - name: Run runner guarantee tests
+        run: python -m unittest discover -s tests -v
+
+  app-tests:
+    name: app guardrails
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install app dependencies
+        run: |
+          if [ -f app/requirements.txt ]; then
+            pip install -r app/requirements.txt pytest
+          else
+            echo "no app/ yet — nothing to test"
+          fi
+      - name: Run app tests
+        run: |
+          if [ -d app ] && ls tests/test_app_*.py >/dev/null 2>&1; then
+            pytest tests/test_app_*.py -v
+          else
+            echo "no app tests yet — skipping"
+          fi
+
+  secrets:
+    name: no credentials committed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # A key that has ever been committed is compromised even after removal,
+      # so this fails the build rather than reporting a warning.
+      - name: Scan for credential patterns
+        run: |
+          if git grep -nIE 'AIza[0-9A-Za-z_-]{30,}|gh[pousr]_[0-9A-Za-z]{30,}|github_pat_[0-9A-Za-z_]{40,}|[0-9]{8,10}:AA[0-9A-Za-z_-]{30,}|BEGIN [A-Z ]*PRIVATE KEY' -- . ':!.github/workflows/ci.yml'; then
+            echo "::error::Credential-shaped string found in the tree."
+            exit 1
+          fi
+          echo "clean"

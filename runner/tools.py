@@ -130,7 +130,13 @@ def check_gate(ctx: ToolContext, kind: str, payload: str,
             ctx.telegram.request_approval(request_id=rid, kind=kind, payload=payload,
                                           deadline=deadline,
                                           default_action=default_action)
+            ctx.ledger.con.execute(
+                "UPDATE human_requests SET notified_at=datetime('now') WHERE id=?",
+                (rid,))
+            ctx.ledger.con.commit()
         except Exception as exc:  # noqa: BLE001
+            # Left with notified_at NULL on purpose: deliver_pending() retries it
+            # next cycle rather than leaving it silently unasked.
             ctx.ledger.event("error", "telegram",
                              f"could not deliver approval request #{rid}: {exc}")
     ctx.cycle.note_blocked()
@@ -216,6 +222,10 @@ def t_request_human(ctx: ToolContext, *, kind: str, payload: str,
             ctx.telegram.request_approval(request_id=rid, kind=kind, payload=payload,
                                           deadline=deadline,
                                           default_action=default_action)
+            ctx.ledger.con.execute(
+                "UPDATE human_requests SET notified_at=datetime('now') WHERE id=?",
+                (rid,))
+            ctx.ledger.con.commit()
         except Exception as exc:  # noqa: BLE001
             ctx.ledger.event("error", "telegram", f"request #{rid} undelivered: {exc}")
     return {"request_id": rid, "on_timeout": default_action,

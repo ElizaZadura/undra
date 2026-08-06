@@ -161,10 +161,16 @@ CREATE TABLE IF NOT EXISTS open_questions (
   id INTEGER PRIMARY KEY, at TEXT NOT NULL, question TEXT NOT NULL,
   blocking INTEGER DEFAULT 0, answer TEXT, answered_at TEXT);
 
+-- notified_at is NULL until the request has actually reached the Operator.
+-- A request written to the ledger but never delivered — the channel was down,
+-- or the cycle ran with it disabled — would otherwise sit pending forever with
+-- nothing retrying it, and the loop would wait on an answer to a question
+-- nobody was asked.
 CREATE TABLE IF NOT EXISTS human_requests (
   id INTEGER PRIMARY KEY, at TEXT NOT NULL, kind TEXT NOT NULL, payload TEXT,
   priority TEXT DEFAULT 'digest', deadline TEXT, default_action TEXT,
-  status TEXT NOT NULL DEFAULT 'pending', resolved_at TEXT, response TEXT);
+  status TEXT NOT NULL DEFAULT 'pending', resolved_at TEXT, response TEXT,
+  notified_at TEXT);
 
 -- recipient_hash, not recipient: no customer PII in a repo-committed table.
 CREATE TABLE IF NOT EXISTS outbound (

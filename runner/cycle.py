@@ -163,9 +163,14 @@ def run(*, stub_model: bool = False, use_telegram: bool = True) -> int:
     tg = None
     if use_telegram:
         try:
-            from .telegram import Telegram, sync
+            from .telegram import Telegram, sync, deliver_pending
             tg = Telegram()
             n = sync(tg, led)          # reads from the persisted offset
+            resent = deliver_pending(tg, led)   # never-delivered approvals
+            if resent:
+                led.event("warn", "telegram",
+                          f"delivered {resent} approval request(s) that had never "
+                          "reached the Operator")
             if n:
                 led.event("info", "telegram", f"processed {n} update(s) from the Operator")
         except Exception as exc:  # noqa: BLE001

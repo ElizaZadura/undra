@@ -147,6 +147,40 @@ def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def deliver_pending(tg: Telegram, ledger) -> int:
+    """Send any pending approval request that has never reached the Operator.
+
+    A request written to the ledger but not delivered — channel down, or a cycle
+    run with Telegram disabled — would otherwise sit pending forever while the
+    loop waits on an answer to a question nobody was asked. Verified on
+    2026-08-06: request #1 was created by a cycle run with --no-telegram and was
+    still pending hours later, undelivered and unnoticed.
+
+    Deliberately NOT written to `outbound`: the Operator is not a third party
+    (AGENTS.md #2).
+    """
+    rows = ledger.con.execute(
+        "SELECT id, kind, payload, deadline, default_action FROM human_requests "
+        "WHERE status='pending' AND notified_at IS NULL ORDER BY at").fetchall()
+    sent = 0
+    for r in rows:
+        try:
+            tg.request_approval(request_id=r["id"], kind=r["kind"],
+                                payload=r["payload"] or "",
+                                deadline=r["deadline"],
+                                default_action=r["default_action"] or "abandon_task")
+        except TelegramError as exc:
+            ledger.event("error", "telegram",
+                         f"request #{r['id']} still undelivered: {exc}")
+            continue
+        ledger.con.execute(
+            "UPDATE human_requests SET notified_at=? WHERE id=?", (_now(), r["id"]))
+        ledger.con.commit()
+        ledger.event("info", "telegram", f"delivered pending request #{r['id']}")
+        sent += 1
+    return sent
+
+
 def sync(tg: Telegram, ledger) -> int:
     """Poll from the stored offset, apply what arrived, save the new offset.
     Returns the number of updates processed."""

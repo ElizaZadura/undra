@@ -153,6 +153,26 @@ class LedgerTest(unittest.TestCase):
         ).fetchone()[0]
         self.assertEqual(warn, 1, "the forced 'ok' was downgraded silently")
 
+    # -- the Telegram backlog must not replay -------------------------------- #
+
+    def test_telegram_offset_round_trips(self):
+        """Without a persisted offset every cycle re-reads the whole backlog.
+        Harmless for `approve N`, but a single old `/halt` would be re-applied
+        forever: the Operator clears the flag and the next cycle sets it again,
+        with the cause hours in the past and invisible."""
+        from runner.telegram import get_offset, set_offset
+        self.assertIsNone(get_offset(self.led))
+        set_offset(self.led, 444293522)
+        self.assertEqual(get_offset(self.led), 444293522)
+        set_offset(self.led, 444293999)
+        self.assertEqual(get_offset(self.led), 444293999)
+
+    def test_telegram_offset_does_not_disturb_the_halt_flag(self):
+        from runner.telegram import set_offset
+        set_offset(self.led, 12345)
+        self.assertFalse(self.led.is_halted(),
+                         "writing the Telegram offset altered the halt flag")
+
     # -- CHARTER.md §9: a request without a default action is malformed ----- #
 
     def test_request_without_default_action_is_refused(self):

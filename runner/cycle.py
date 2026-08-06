@@ -163,9 +163,11 @@ def run(*, stub_model: bool = False, use_telegram: bool = True) -> int:
     tg = None
     if use_telegram:
         try:
-            from .telegram import Telegram, process_updates
+            from .telegram import Telegram, sync
             tg = Telegram()
-            process_updates(tg, led, tg.poll())
+            n = sync(tg, led)          # reads from the persisted offset
+            if n:
+                led.event("info", "telegram", f"processed {n} update(s) from the Operator")
         except Exception as exc:  # noqa: BLE001
             led.event("warn", "telegram", f"channel unavailable: {exc}")
             tg = None

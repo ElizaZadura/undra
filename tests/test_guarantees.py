@@ -202,6 +202,46 @@ class LedgerTest(unittest.TestCase):
         self.assertIn('"row_count": 1', text, "payments should still be counted")
 
 
+class CiVerdictTest(unittest.TestCase):
+    """CHARTER.md §5 authorises merging PRs *that pass CI*. Absence of CI is not
+    a pass — a repository with no checks has demonstrated nothing, and treating
+    that as permission would let an agent merge unverified code into main."""
+
+    def _verdict(self, runs, combined_state, has_statuses=True):
+        from unittest.mock import patch
+        from runner.github import GitHub
+        gh = GitHub.__new__(GitHub)
+        gh.repo, gh.token = "x/y", "t"
+        payloads = [{"check_runs": runs},
+                    {"state": combined_state,
+                     "statuses": [{}] if has_statuses else []}]
+        with patch.object(GitHub, "_call", side_effect=payloads):
+            return gh.checks("deadbeef")["verdict"]
+
+    def test_no_checks_is_not_a_pass(self):
+        self.assertEqual(self._verdict([], None, has_statuses=False), "none")
+
+    def test_failing_check_is_fail(self):
+        self.assertEqual(
+            self._verdict([{"name": "t", "status": "completed",
+                            "conclusion": "failure"}], None), "fail")
+
+    def test_running_check_is_pending(self):
+        self.assertEqual(
+            self._verdict([{"name": "t", "status": "in_progress"}], None), "pending")
+
+    def test_all_green_is_pass(self):
+        self.assertEqual(
+            self._verdict([{"name": "t", "status": "completed",
+                            "conclusion": "success"}], "success"), "pass")
+
+    def test_one_failure_among_passes_is_fail(self):
+        self.assertEqual(
+            self._verdict([{"name": "a", "status": "completed", "conclusion": "success"},
+                           {"name": "b", "status": "completed", "conclusion": "failure"}],
+                          "success"), "fail")
+
+
 class LlmTest(unittest.TestCase):
     """Encodes what the live API actually did on 2026-08-06."""
 

@@ -65,6 +65,8 @@ class ToolContext:
     telegram: Any | None = None
     _jules: Any = None
 
+    _github: Any = None
+
     def jules(self):
         """Lazily constructed: a cycle that never files a build task should not
         fail because JULES_API_KEY is absent."""
@@ -72,6 +74,14 @@ class ToolContext:
             from .jules import Jules
             self._jules = Jules()
         return self._jules
+
+    def github(self):
+        if self._github is None:
+            from .github import GitHub
+            if not self.cfg.allowed_repos:
+                raise ToolError("no repository in invariants.toml allowed_repos")
+            self._github = GitHub(self.cfg.allowed_repos[0])
+        return self._github
 
 
 class ToolError(RuntimeError):
@@ -432,7 +442,123 @@ def t_jules_list_tasks(ctx: ToolContext) -> dict:
                          for s in sessions[:20]]}
 
 
+def t_list_pull_requests(ctx: ToolContext, *, state: str = "open") -> dict:
+    """What is waiting for review. Read-only."""
+    try:
+        prs = ctx.github().pulls(state)
+    except Exception as exc:  # noqa: BLE001
+        raise ToolError(f"could not list pull requests: {exc}") from None
+    return {"count": len(prs),
+            "pull_requests": [{"number": p["number"], "title": p["title"],
+                               "branch": p["head"]["ref"],
+                               "state": p["state"],
+                               "merged": p.get("merged_at") is not None,
+                               "draft": p.get("draft", False)}
+                              for p in prs]}
+
+
+def t_read_pull_request(ctx: ToolContext, *, number: int) -> dict:
+    """Read a PR: files, CI verdict, and the diff itself.
+
+    Read the diff before merging. A PR that Jules reports as finished can still
+    contain a defect that only the diff shows — the first PR in this repository
+    ran its refusal guardrail on text but not on image-only queries, which is
+    the product's headline path (CHARTER.md §3.3).
+    """
+    gh = ctx.github()
+    try:
+        pr = gh.pull(number)
+        files = gh.pull_files(number)
+        diff, truncated = gh.pull_diff(number)
+        ci = gh.checks(pr["head"]["sha"])
+    except Exception as exc:  # noqa: BLE001
+        raise ToolError(f"could not read PR #{number}: {exc}") from None
+
+    return {
+        "number": number,
+        "title": pr["title"],
+        "state": pr["state"],
+        "mergeable": pr.get("mergeable"),
+        "ci": ci,
+        "files": [{"file": f["filename"], "status": f["status"],
+                   "added": f["additions"], "removed": f["deletions"]}
+                  for f in files],
+        "diff": diff,
+        "diff_truncated": truncated,
+        "note": ("The diff is the evidence. Judge the change on what it does, "
+                 "not on what the PR title claims (CHARTER.md §6.6)."),
+    }
+
+
+def t_comment_on_pull_request(ctx: ToolContext, *, number: int, body: str) -> dict:
+    """Leave a review comment. Authorised by CHARTER.md §5 — reviewing code in
+    the assigned repository is ordinary work, not a gated PUBLISH.
+
+    A human reads this, so §2.4 applies: the comment says it came from software.
+    """
+    if not body.strip():
+        raise ToolError("comment body is required")
+    signed = (f"{body.strip()}\n\n---\n*Automated review by Coral, the operating "
+              f"agent for undra. No human wrote this comment.*")
+    key = _payload_key("PR_COMMENT", f"{number}|{body}")
+    with ctx.ledger.action(kind="PR_COMMENT", target=f"pr#{number}",
+                           idempotency_key=key, cycle_id=ctx.cycle.id):
+        ctx.github().comment(number, signed)
+    ctx.cycle.note_productive()
+    return {"status": "commented", "pr": number}
+
+
+def t_merge_pull_request(ctx: ToolContext, *, number: int,
+                         reason: str = "") -> dict:
+    """Merge a PR. CHARTER.md §5 grants this for PRs *that pass CI* — the
+    condition is machine-checkable, so it is checked here rather than trusted.
+
+    Merging is not gated, but it does change main. Read the diff first.
+    """
+    gh = ctx.github()
+    try:
+        pr = gh.pull(number)
+        ci = gh.checks(pr["head"]["sha"])
+    except Exception as exc:  # noqa: BLE001
+        raise ToolError(f"could not read PR #{number}: {exc}") from None
+
+    if pr.get("merged_at"):
+        return {"status": "already_merged", "pr": number}
+    if pr["state"] != "open":
+        raise ToolError(f"PR #{number} is {pr['state']}, not open")
+
+    if ci["verdict"] != "pass":
+        return {"error": f"CI verdict is {ci['verdict']}, not pass",
+                "ci": ci,
+                "note": ("CHARTER.md §5 authorises merging PRs *that pass CI*. "
+                         + ("No checks are configured, which is not the same as "
+                            "passing — the change has demonstrated nothing. Ask "
+                            "the Operator rather than merging on an absence of "
+                            "evidence." if ci["verdict"] == "none" else
+                            "Fix the failure or wait, and do not merge around "
+                            "it."))}
+
+    key = _payload_key("PR_MERGE", f"{number}|{pr['head']['sha']}")
+    with ctx.ledger.action(kind="PR_MERGE", target=f"pr#{number}",
+                           idempotency_key=key, cycle_id=ctx.cycle.id):
+        gh.merge(number, f"{pr['title']} (#{number})")
+    ctx.ledger.decision(
+        cycle_id=ctx.cycle.id,
+        summary=f"Merged pull request #{number}: {pr['title']}",
+        rationale=reason or "CI passed and the diff was reviewed.",
+        evidence=f"CI verdict pass; checks: {', '.join(ci['passed']) or 'none named'}",
+        reversible=True,
+        falsifier="If main breaks or the change does not do what the diff "
+                  "suggested, this merge was premature.")
+    ctx.cycle.note_productive()
+    return {"status": "merged", "pr": number}
+
+
 TOOL_IMPLS: dict[str, Callable[..., dict]] = {
+    "list_pull_requests": t_list_pull_requests,
+    "read_pull_request": t_read_pull_request,
+    "comment_on_pull_request": t_comment_on_pull_request,
+    "merge_pull_request": t_merge_pull_request,
     "log_decision": t_log_decision,
     "add_objective": t_add_objective,
     "log_open_question": t_log_open_question,
@@ -533,6 +659,43 @@ def declarations() -> list[dict]:
                        "filing a new one — you have no memory of previous "
                        "cycles and will otherwise file the same task again."),
           parameters={"type": "object", "properties": {}}),
+
+        S(name="list_pull_requests",
+          description=("Pull requests in the repository. Jules tasks become PRs, "
+                       "so this is how you see what your build work produced."),
+          parameters={"type": "object", "properties": {
+              "state": {"type": "string", "description": "open, closed or all. Default open."},
+          }}),
+
+        S(name="read_pull_request",
+          description=("Read a PR's files, CI verdict and full diff. Do this "
+                       "BEFORE merging. A PR that Jules reports as finished can "
+                       "still contain a defect only the diff reveals."),
+          parameters={"type": "object", "properties": {
+              "number": {"type": "integer"},
+          }, "required": ["number"]}),
+
+        S(name="comment_on_pull_request",
+          description=("Leave a review comment on a PR. Ordinary work under "
+                       "CHARTER.md §5, not a gated PUBLISH. The comment is "
+                       "labelled as written by software."),
+          parameters={"type": "object", "properties": {
+              "number": {"type": "integer"},
+              "body": {"type": "string",
+                       "description": "What you found. Be specific: name the file "
+                                      "and what is wrong with it."},
+          }, "required": ["number", "body"]}),
+
+        S(name="merge_pull_request",
+          description=("Merge a PR into main. Authorised by CHARTER.md §5 only "
+                       "for PRs that pass CI, and that is checked — a repository "
+                       "with no checks configured does not count as passing. "
+                       "Read the diff first."),
+          parameters={"type": "object", "properties": {
+              "number": {"type": "integer"},
+              "reason": {"type": "string",
+                         "description": "Why this is safe to merge. Recorded as a decision."},
+          }, "required": ["number"]}),
 
         S(name="finish_cycle",
           description=("End the cycle with a written handoff. Call this last, "

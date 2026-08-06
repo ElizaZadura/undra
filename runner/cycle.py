@@ -173,6 +173,10 @@ def run(*, stub_model: bool = False, use_telegram: bool = True) -> int:
                           "reached the Operator")
             if n:
                 led.event("info", "telegram", f"processed {n} update(s) from the Operator")
+            # CHARTER.md §9: once per day. Sent before the model runs, so a cycle
+            # that later fails still reports yesterday honestly.
+            from . import digest as _digest
+            _digest.send_if_due(led, cfg, tg)
         except Exception as exc:  # noqa: BLE001
             led.event("warn", "telegram", f"channel unavailable: {exc}")
             tg = None

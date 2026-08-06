@@ -110,22 +110,21 @@ class Jules:
         if require_plan_approval is None:
             require_plan_approval = needs_plan_approval(prompt, title)
 
-        # autoPr is set REGARDLESS of require_plan_approval, which is a
-        # correction (2026-08-06). AGENTS.md #10 reads "requirePlanApproval for
-        # anything touching payments, auth or user data; autoPr otherwise", and
-        # that was implemented as mutually exclusive. Session
-        # 1652844863819652924 then built the entire application — code, tests,
-        # code review, XSS fix, README — reported "All plan steps completed.
-        # Ready for submission", and stopped there. No branch, no PR, and no API
-        # endpoint to submit it: :submit, :publish and :createPullRequest all
-        # return 404, so the work was only reachable by a human clicking
-        # Publish in the web UI.
+        # NO autoPr FIELD. AGENTS.md #10 mentions autoPr, and it was added here
+        # on 2026-08-06 to stop finished work stranding as an unsubmitted patch.
+        # It broke the build loop: the v1alpha API rejects the whole request with
+        # 400 "Unknown name 'autoPr' at 'session'", so every jules_file_task call
+        # failed until it was removed. Probed 2026-08-06 — autoPr, autoPR,
+        # auto_pr, automaticPullRequest and createPullRequest are all rejected as
+        # unknown field names. Whatever AGENTS.md was describing, this API does
+        # not expose it under any of those spellings.
         #
-        # The two flags gate different things. requirePlanApproval gates whether
-        # Jules may START, which is the control the charter wants for anything
-        # touching user data. autoPr gates whether finished work becomes a PR,
-        # which is not a safety boundary at all — a PR still has to be reviewed
-        # and merged. Withholding it just strands completed work.
+        # So stranding is not solvable from here. Session 1652844863819652924
+        # completed with a full patch and produced a PR only after the Operator
+        # clicked Publish in the web UI, and there is no submit endpoint either
+        # (:submit, :publish and :createPullRequest all 404). Treat a completed
+        # session with no PR as needing a human, and say so rather than
+        # inventing a field to fix it.
         body = {
             "prompt": prompt,
             "title": title,
@@ -134,7 +133,6 @@ class Jules:
                 "githubRepoContext": {"startingBranch": branch},
             },
             "requirePlanApproval": require_plan_approval,
-            "autoPr": True,
         }
 
         if ledger is not None:

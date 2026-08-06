@@ -242,6 +242,40 @@ class CiVerdictTest(unittest.TestCase):
                           "success"), "fail")
 
 
+class ScrubberTest(unittest.TestCase):
+    """The scrubber must catch real card numbers and stop eating the audit trail.
+
+    Three consecutive decisions were withheld from the public log on 2026-08-06
+    because the card pattern matched a 19-digit Jules session id. The public log
+    is a graded deliverable, so a systematic false positive is not a free
+    trade-off — but a missed card would be worse, hence both directions here.
+    """
+
+    def setUp(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from publish_log import scan
+        self.scan = scan
+
+    def test_real_cards_are_still_caught(self):
+        for label, number in (("visa", "4111111111111111"),
+                              ("visa spaced", "4111 1111 1111 1111"),
+                              ("mastercard", "5500005555555559"),
+                              ("amex", "378282246310005"),
+                              ("discover", "6011111111111117")):
+            with self.subTest(label):
+                self.assertIn("card", self.scan(f"paid with {number} today"))
+
+    def test_jules_session_ids_are_not_cards(self):
+        """This exact id passes Luhn — checksum 100 — so the leading-digit check
+        is what saves it. Do not remove one and keep the other."""
+        self.assertEqual(self.scan("session 1652844863819652924 completed"), [])
+        self.assertEqual(self.scan("branch jules-1652844863819652924-781c3b6b"), [])
+
+    def test_other_patterns_are_untouched(self):
+        self.assertIn("personnummer", self.scan("born 890101-1234"))
+        self.assertIn("email", self.scan("mail to sam@example.com"))
+
+
 class LlmTest(unittest.TestCase):
     """Encodes what the live API actually did on 2026-08-06."""
 

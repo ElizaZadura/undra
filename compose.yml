@@ -1,0 +1,5 @@
+services:
+  ops:
+    env_file: env/ops.env
+  app:
+    env_file: env/app.env

@@ -1,0 +1,142 @@
+# invariants.toml — the machine-checked subset of CHARTER.md
+#
+# Read by situation_report.py and the watchdog. The agents can read this file
+# but must never write to it. Keep it under version control; a diff here is a
+# change to what the system is allowed to do, and should be visible as such.
+#
+# Rule of thumb: if a constraint cannot be checked by a deterministic script,
+# it belongs in CHARTER.md, not here. This file contains only things a program
+# can verify without judgement.
+
+version = 1
+
+[project]
+codename       = "undra"
+deadline_utc   = "2026-08-17T20:00:00Z"   # 2026-08-17 13:00 PDT, competition close
+timezone_human = "Europe/Stockholm"        # for scheduling the digest
+
+[budget]
+# All figures USD. The watchdog halts at halt_at_pct of any cap.
+# These are deliberately low. Raising them is a decision, not a formality.
+hard_cap_total        = 60.0
+cap_llm               = 25.0
+cap_infra             = 20.0
+cap_marketing         = 10.0
+cap_single_action     = 5.0
+halt_at_pct           = 90
+
+[rates]
+# Rate ceilings exist to bound the damage from a loop, not to model demand.
+#
+# max_outbound_per_hour counts messages reaching THIRD PARTIES ONLY. Telegram
+# traffic to the Operator — approval requests, digests — must NOT be written to
+# the outbound table, or a busy escalation hour halts Coral for talking to Eliza.
+max_outbound_per_hour        = 3
+max_outbound_total           = 40
+max_deploys_per_hour         = 4
+max_cycles_per_day           = 10    # 6 scheduled + headroom for event-driven wakeups
+max_repeated_action_failures = 5     # was 3: a first deploy failing three times is
+                                     # normal iteration, not a meltdown. 5 still
+                                     # catches a genuine loop.
+# Cycles that woke but achieved nothing — halted, rate-limited, or blocked on an
+# approval. Distinct from scheduled idle. Warns rather than halts: the point is to
+# tell Eliza the limits are the bottleneck, not to stop for it.
+max_unproductive_cycles_per_day = 3
+
+[staleness]
+# Silence is a failure mode. These catch a wedged or crashed loop.
+#
+# max_hours_without_cycle must exceed cycle_interval_hours or it fires on every
+# normal gap. Tighter detection therefore means MORE cycles, not a lower ceiling.
+# 4-hour interval => 6 scheduled cycles/day => ~180 API requests/day, well inside
+# the free tier.
+cycle_interval_hours             = 4
+max_hours_without_cycle          = 6
+max_hours_without_ledger_write   = 6
+max_hours_without_healthy_deploy = 4
+
+[gates]
+# Action kinds requiring a one-shot approval token. Mirrors CHARTER.md §4.
+require_approval = [
+  "LOGIN",
+  "CAPTCHA",
+  "TOS_ACCEPTANCE",
+  "NEW_ACCOUNT_CREATION",
+  "PAYMENT_AUTH",
+  "SPEND_OVER_LIMIT",
+  "EXTERNAL_MESSAGE",
+  "PUBLISH",
+  "PRICING_CHANGE",
+  "DESTRUCTIVE",
+  "PII_EXPORT",
+  "LEGAL_OR_MEDICAL_CLAIM",
+]
+
+# Default action when an approval request times out. Almost always abandon.
+[gates.timeout_defaults]
+LOGIN                  = "abandon_task"
+CAPTCHA                = "abandon_task"
+TOS_ACCEPTANCE         = "abandon_task"
+NEW_ACCOUNT_CREATION   = "abandon_task"
+PAYMENT_AUTH           = "abandon_task"
+SPEND_OVER_LIMIT       = "abandon_task"
+EXTERNAL_MESSAGE       = "queue_for_digest"
+PUBLISH                = "queue_for_digest"
+PRICING_CHANGE         = "abandon_task"
+DESTRUCTIVE            = "abandon_task"
+PII_EXPORT             = "abandon_task"
+LEGAL_OR_MEDICAL_CLAIM = "halt"          # should never fire; if it does, stop everything
+
+[scope]
+# Anything not listed here is out of bounds. See CHARTER.md §3.10.
+allowed_repos    = ["ElizaZadura/undra"]
+allowed_hosts    = ["FILL_ME.run.app"]
+allowed_domains  = ["undra.nu"]
+ledger_path      = "./ledger.db"
+approval_channel = "telegram"
+
+# Public operations log. Referenced by CHARTER.md §5 — the standing latitude to
+# publish without an approval token applies ONLY to these channels, and only to
+# output of the log generator. Adding a channel here is a deliberate act.
+publish_channels = ["github-pages"]
+publish_dir      = "./docs"           # GitHub Pages serves /docs on the default branch
+# Where the log is actually reachable. This is NOT necessarily allowed_domains[0]:
+# the product lives on undra.nu, the log may live on a subdomain, a path, or
+# github.io. RSS guids are built from this, so a wrong value means dead links.
+publish_base_url = "https://log.undra.nu"   # subdomain, NOT a path on the apex:
+                                            # GitHub Pages and Cloud Run are
+                                            # separate origins, so undra.nu/log
+                                            # cannot be Pages if the apex is the app.
+
+[egress]
+# Denied outright. Not a security boundary — a tripwire that fires an event.
+deny_hosts = [
+  "169.254.169.254",   # cloud metadata endpoint
+  "localhost",
+  "127.0.0.1",
+]
+deny_private_ranges = true   # 10/8, 172.16/12, 192.168/16, 169.254/16
+
+[models]
+# Model IDs as of 2026-08-05. VERIFY against your own key before relying on these:
+#   curl -s "https://generativelanguage.googleapis.com/v1beta/models?key=$KEY"
+# Free tier reaches only some of them; the free-tier list changes with each release.
+#
+# Note for whoever wires the ADK config: temperature, top_p and top_k are
+# deprecated on 3.x. Use thinking_level, not thinking_budget. Do not set sampling
+# parameters at all — the defaults are what the reasoning is tuned for.
+routine          = "gemini-3.1-flash-lite"   # triage, classification, log summaries
+work             = "gemini-3.6-flash"        # the cycle loop. Chosen for token
+                                             # efficiency in agentic loops, which
+                                             # dominates cost over a long horizon.
+planning         = "gemini-3.1-pro-preview"  # one daily call over the full
+                                             # situation report. Still preview —
+                                             # see planning_fallback below.
+planning_fallback = "gemini-3.6-flash"       # If the planning model errors or
+                                             # 404s, fall back and log an event.
+                                             # Do NOT halt: preview models get
+                                             # pulled (3.1-flash-lite-preview
+                                             # already was), and losing the daily
+                                             # plan is not worth stopping the run.
+max_planning_calls_per_day = 2
+user_data_key    = "paid"     # never "free" — see CHARTER.md §3.7

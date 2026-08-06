@@ -1,0 +1,29 @@
+# The ledger lives only on `red`. The redacted dump is what goes offsite.
+ledger.db
+ledger.db-wal
+ledger.db-shm
+
+# Credentials.
+#
+# The canonical location is env/ (AGENTS.md "Layout on red", compose.yml).
+# The patterns below it are deliberate redundancy: a key that has ever been
+# committed is compromised even after removal, so this file matches every
+# plausible spelling rather than only the one currently in use. An earlier
+# version listed `.env.ops` / `.env.app` while the real files were named
+# `.ops.env` / `.app.env`, and matched neither.
+env/
+*.env
+.env
+.env.*
+*.pem
+*.key
+
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+ENV/
+
+# Claude Code per-user local overrides
+.claude/settings.local.json

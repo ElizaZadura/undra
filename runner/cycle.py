@@ -56,6 +56,37 @@ that is a good cycle. Confident action on a misread state is how this fails.
 --- SITUATION REPORT ---
 {report}
 --- END SITUATION REPORT ---
+{plan}"""
+
+PLAN_PROMPT = """\
+You are planning one day of work for undra. Read the situation report below and
+produce a short, concrete plan for the next cycle: what to do, in what order,
+and what to leave alone.
+
+Constraints you must respect:
+  - The hours remaining and the objective list are in the report. Anything not
+    on the objective list is not work (CHARTER.md §8.3).
+  - Do not propose anything CHARTER.md §3 forbids, and do not propose actions
+    that need an approval token as though they were free.
+  - Be specific. "Improve marketing" is not a plan. Name the artefact.
+  - If the honest answer is that the state is unclear, say so and say what would
+    clarify it.
+
+Six to ten lines. No preamble.
+
+--- SITUATION REPORT ---
+{report}
+--- END SITUATION REPORT ---
+"""
+
+PLAN_BLOCK = """
+--- PLAN FOR THIS CYCLE ---
+Produced at the start of this cycle by {model} reading the same report you have.
+It is advice, not instruction: the charter and the report outrank it, and if it
+contradicts either, follow them and log the discrepancy.
+
+{plan}
+--- END PLAN ---
 """
 
 
@@ -172,24 +203,27 @@ def run(*, stub_model: bool = False, use_telegram: bool = True) -> int:
         )
         model = cfg.model_for("work")
 
+    plan = "" if stub_model else _plan(cfg, led, cyc, report)
+
     handoff = ""
     try:
-        handoff = _agent_loop(ctx, client, model, report, stub_model=stub_model)
+        handoff = _agent_loop(ctx, client, model, report, plan,
+                              stub_model=stub_model)
     except Halted:
         cyc.note_halted()
         handoff = ("Halt flag was set mid-cycle. Stopped immediately without "
                    "completing further actions (CHARTER.md §10).")
     except llm.PermanentModelError as exc:
         led.event("error", "llm", f"permanent model failure: {exc}")
-        handoff = (f"Could not run: the model was permanently unavailable with "
-                   f"this key ({exc}). This is not a rate limit and retrying will "
-                   "not help. Escalated as an open question.")
+        handoff = (f"Stopped early: the model was permanently unavailable with "
+                   f"this key ({exc}). Not a rate limit; retrying will not help. "
+                   f"Escalated as an open question. {_progress(led, cyc)}")
         led.open_question(f"Model permanently unavailable: {exc}", blocking=True)
     except Exception as exc:  # noqa: BLE001
         led.event("error", "cycle", f"cycle failed: {type(exc).__name__}: {exc}")
-        handoff = (f"Cycle aborted by an unhandled error: {type(exc).__name__}: "
-                   f"{exc}. State should be treated as unverified by the next "
-                   "cycle.")
+        handoff = (f"Stopped early by an unhandled error: {type(exc).__name__}: "
+                   f"{exc}. {_progress(led, cyc)} Anything not listed there "
+                   "should be treated as unverified by the next cycle.")
 
     status = cyc.end(handoff or "No handoff was written; treat prior state as "
                                 "unverified.")
@@ -201,19 +235,73 @@ def run(*, stub_model: bool = False, use_telegram: bool = True) -> int:
     return 0
 
 
+def _plan(cfg, led: Ledger, cyc: CycleRecorder, report: str) -> str:
+    """One planning call per day over the full situation report.
+
+    Uses the PAID key and a Pro model, because the free tier returns a permanent
+    429 for Pro. If that is unavailable for any reason — no paid key in this
+    container, a withdrawn preview model, an exhausted balance — fall back to
+    planning_fallback on the free key and log an event. Never halt: preview
+    models get pulled, and losing the daily plan is not worth stopping the run
+    (AGENTS.md #5).
+    """
+    primary = cfg.model_for("planning")
+    fallback = cfg.model_for("planning_fallback")
+
+    if led.planning_calls_today(primary) >= cfg.max_planning_calls_per_day:
+        return ""
+
+    def _client(role: str):
+        return llm.Gemini(
+            llm.api_key(role),
+            on_usage=lambda u: led.llm_usage(
+                model=u.model, input_tokens=u.input_tokens,
+                output_tokens=u.output_tokens, thinking_tokens=u.thinking_tokens,
+                total_tokens=u.total_tokens, usd_est=u.usd_est, cycle_id=cyc.id),
+            on_event=lambda level, msg: led.event(level, "llm", msg),
+        )
+
+    attempts: list[tuple[str, str]] = []
+    if llm.has_key("planning"):
+        attempts.append(("planning", primary))
+    else:
+        led.event("warn", "plan",
+                  "GOOGLE_API_KEY_PAID is not set in this container; the Pro "
+                  f"planning model {primary} is unreachable on the free key")
+    attempts.append(("ops", fallback))
+
+    for role, model in attempts:
+        try:
+            resp = _client(role).generate(
+                model=model, contents=PLAN_PROMPT.format(report=report),
+                thinking_level="high")
+            text = (getattr(resp, "text", "") or "").strip()
+            if not text:
+                continue
+            led.event("info", "plan", f"plan produced by {model}")
+            return PLAN_BLOCK.format(model=model, plan=text)
+        except llm.PermanentModelError as exc:
+            led.event("warn", "plan",
+                      f"{model} permanently unavailable ({exc}); falling back")
+        except Exception as exc:  # noqa: BLE001
+            led.event("warn", "plan", f"{model} planning call failed: {exc}")
+
+    led.event("warn", "plan", "no plan produced this cycle; proceeding without one")
+    return ""
+
+
 def _agent_loop(ctx: tools.ToolContext, client: Any, model: str, report: str,
-                *, stub_model: bool) -> str:
+                plan: str, *, stub_model: bool) -> str:
     """Run the model until it calls finish_cycle or the turn budget runs out."""
     from_sdk = not stub_model
+    prompt = TASK_PROMPT.format(report=report, plan=plan)
     if from_sdk:
         from google.genai import types
         tool_defs = [types.Tool(function_declarations=tools.declarations())]
-        contents: Any = [types.Content(
-            role="user",
-            parts=[types.Part(text=TASK_PROMPT.format(report=report))])]
+        contents: Any = [types.Content(role="user", parts=[types.Part(text=prompt)])]
     else:
         tool_defs = None
-        contents = TASK_PROMPT.format(report=report)
+        contents = prompt
 
     charter = _charter()
     handoff = ""
@@ -277,6 +365,31 @@ def json_preview(obj: Any, limit: int = 300) -> str:
     except Exception:  # noqa: BLE001
         s = str(obj)
     return s[:limit]
+
+
+def _progress(led: Ledger, cyc: CycleRecorder) -> str:
+    """What actually got done before the failure.
+
+    A handoff that says "could not run" when five objectives and a decision were
+    written is a false statement in the audit trail, and the next cycle — a
+    stranger with no memory — would act on it (CHARTER.md §6.1, §8.5).
+    """
+    try:
+        decisions = led.con.execute(
+            "SELECT COUNT(*) FROM decisions WHERE cycle_id=?", (cyc.id,)).fetchone()[0]
+        actions = led.con.execute(
+            "SELECT COUNT(*) FROM actions WHERE cycle_id=? AND status='ok'",
+            (cyc.id,)).fetchone()[0]
+        objectives = led.con.execute(
+            "SELECT COUNT(*) FROM objectives WHERE status='open'").fetchone()[0]
+    except Exception:  # noqa: BLE001
+        return "Progress before the failure could not be read from the ledger."
+    if not (decisions or actions):
+        return "Nothing was written to the ledger before the failure."
+    return (f"Work completed before stopping and already committed to the "
+            f"ledger: {decisions} decision(s), {actions} successful action(s); "
+            f"{objectives} objective(s) now open. That work stands — do not "
+            f"redo it.")
 
 
 def _dump(led: Ledger) -> None:

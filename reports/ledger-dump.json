@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-06T13:33:23.803864+00:00",
+  "generated_at": "2026-08-06T14:39:49.985061+00:00",
   "note": "Redacted dump of the operating ledger. Payments detail and recipient columns are omitted; see runner/ledger.py. The authoritative ledger lives only on the lab box.",
   "tables": {
     "actions": [],
@@ -17,9 +17,58 @@
         "ended_at": "2026-08-06T13:33:23.745205+00:00",
         "status": "halted",
         "handoff": "HALTED at 2026-08-06T13:33:23+00:00. Reason: PRE-LAUNCH TEST of the halt path \u2014 set by the Operator, not the watchdog. No action taken, no model call made. Per CHARTER.md \u00a710 this cycle did not investigate the cause and did not attempt to clear the flag."
+      },
+      {
+        "id": 3,
+        "started_at": "2026-08-06T14:35:04.056406+00:00",
+        "ended_at": "2026-08-06T14:35:04.155298+00:00",
+        "status": "idle",
+        "handoff": "Stub cycle: no model was called. The runner path was exercised end to end and the ledger was written."
+      },
+      {
+        "id": 4,
+        "started_at": "2026-08-06T14:35:21.963556+00:00",
+        "ended_at": "2026-08-06T14:35:49.091338+00:00",
+        "status": "ok",
+        "handoff": "Could not run: the model was permanently unavailable with this key (gemini-3.6-flash: permanent failure, not retryable: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. ). This is not a rate limit and retrying will not help. Escalated as an open question."
+      },
+      {
+        "id": 5,
+        "started_at": "2026-08-06T14:37:59.402405+00:00",
+        "ended_at": "2026-08-06T14:39:04.811989+00:00",
+        "status": "ok",
+        "handoff": "Logged decision #2 and requested human intervention (`request_human` interrupt) regarding the 429 RESOURCE_EXHAUSTED quota issue on gemini-3.6-flash API key. Noted that git/shell tools are not present in current tool declaration set to perform local commits for P1. Next step is for Operator to resolve API key quota and/or clarify git tool availability."
+      },
+      {
+        "id": 6,
+        "started_at": "2026-08-06T14:39:49.844696+00:00",
+        "ended_at": "2026-08-06T14:39:49.942998+00:00",
+        "status": "idle",
+        "handoff": "Stub cycle: no model was called. The runner path was exercised end to end and the ledger was written."
       }
     ],
-    "decisions": [],
+    "decisions": [
+      {
+        "id": 1,
+        "cycle_id": 4,
+        "at": "2026-08-06T14:35:41.743660+00:00",
+        "summary": "Establish initial prioritised objective list for project undra.",
+        "rationale": "Establishing a clear prioritised objective list is required to guide development, clean up repository state, establish deployment, and satisfy competition conditions.",
+        "evidence": "The open objectives list in the situation report is empty, and there are 5 uncommitted files and an unconfigured deployment host. CHARTER.md \u00a71 sets out clear Definition of Done priorities.",
+        "reversible": 1,
+        "falsifier": "If these objectives fail to lead to a deployed product, clean audit trail, or competition compliance before the deadline."
+      },
+      {
+        "id": 2,
+        "cycle_id": 5,
+        "at": "2026-08-06T14:38:27.480158+00:00",
+        "summary": "Escalate Gemini API 429 quota exhaustion to Operator and park tasks waiting on local file/git capabilities.",
+        "rationale": "We cannot perform local git commits without git shell tools in the tool declaration, and Gemini API quota is exhausted blocking further LLM tasks in application logic. Escalating billing/ quota to Operator via request_human and requesting guidance on git tools.",
+        "evidence": "Situation report shows 429 RESOURCE_EXHAUSTED error for gemini-3.6-flash API key and 7 uncommitted files without local git tool access in the toolset.",
+        "reversible": 1,
+        "falsifier": "API calls start succeeding automatically or git tools become available in context."
+      }
+    ],
     "events": [
       {
         "id": 1,
@@ -76,20 +125,473 @@
         "level": "warn",
         "source": "cycle",
         "message": "cycle 2 halted before any model call"
+      },
+      {
+        "id": 9,
+        "at": "2026-08-06T13:33:23.807642+00:00",
+        "level": "info",
+        "source": "dump",
+        "message": "redacted ledger dump written: {'actions': 0, 'cycles': 2, 'decisions': 0, 'events': 8, 'flags': 1, 'human_requests': 0, 'llm_usage': 0, 'objectives': 0, 'open_questions': 0, 'outbound': 0, 'payments': 0, 'spend': 0}"
+      },
+      {
+        "id": 10,
+        "at": "2026-08-06 13:33:24",
+        "level": "info",
+        "source": "test",
+        "message": "halt flag cleared after successful test"
+      },
+      {
+        "id": 11,
+        "at": "2026-08-06 14:11:36",
+        "level": "info",
+        "source": "operator",
+        "message": "two open questions logged by the Operator pre-launch: XPRIZE service restrictions, and undra Gemini API billing mode"
+      },
+      {
+        "id": 12,
+        "at": "2026-08-06 14:31:15",
+        "level": "info",
+        "source": "operator",
+        "message": "paid key verified working on all three configured models after prepaid top-up"
+      },
+      {
+        "id": 13,
+        "at": "2026-08-06T14:35:03.967413+00:00",
+        "level": "info",
+        "source": "situation_report",
+        "message": "halted=False breaches=0 unknowns=1"
+      },
+      {
+        "id": 14,
+        "at": "2026-08-06T14:35:04.122470+00:00",
+        "level": "info",
+        "source": "tool",
+        "message": "finish_cycle({\"handoff\": \"Stub cycle: no model was called. The runner path was exercised end to end and the ledger was written.\"}) -> {\"status\": \"cycle_will_end\", \"handoff_recorded\": true}"
+      },
+      {
+        "id": 15,
+        "at": "2026-08-06T14:35:04.193201+00:00",
+        "level": "info",
+        "source": "dump",
+        "message": "redacted ledger dump written: {'actions': 0, 'cycles': 3, 'decisions': 0, 'events': 14, 'flags': 1, 'human_requests': 0, 'llm_usage': 0, 'objectives': 0, 'open_questions': 2, 'outbound': 0, 'payments': 0, 'spend': 0}"
+      },
+      {
+        "id": 16,
+        "at": "2026-08-06T14:35:21.845862+00:00",
+        "level": "info",
+        "source": "situation_report",
+        "message": "halted=False breaches=0 unknowns=1"
+      },
+      {
+        "id": 17,
+        "at": "2026-08-06T14:35:37.059269+00:00",
+        "level": "warn",
+        "source": "llm",
+        "message": "gemini-3.1-pro-preview: no pricing entry; usd_est uses the deliberately high fallback (2.0, 12.0) USD/Mtok. The figure in llm_usage is an over-estimate, not a read price."
+      },
+      {
+        "id": 18,
+        "at": "2026-08-06T14:35:37.177504+00:00",
+        "level": "info",
+        "source": "plan",
+        "message": "plan produced by gemini-3.1-pro-preview"
+      },
+      {
+        "id": 19,
+        "at": "2026-08-06T14:35:41.638234+00:00",
+        "level": "warn",
+        "source": "llm",
+        "message": "gemini-3.6-flash: no pricing entry; usd_est uses the deliberately high fallback (2.0, 12.0) USD/Mtok. The figure in llm_usage is an over-estimate, not a read price."
+      },
+      {
+        "id": 20,
+        "at": "2026-08-06T14:35:41.777213+00:00",
+        "level": "info",
+        "source": "tool",
+        "message": "log_decision({\"summary\": \"Establish initial prioritised objective list for project undra.\", \"rationale\": \"Establishing a clear prioritised objective list is required to guide development, clean up repository state, establish deployment, and satisfy competition conditions.\", \"reversible\": true, \"evidence\": \"The o) -> {\"decision_id\": 1, \"note\": \"Published verbatim to the public log \\u2014 no personal data, no quoting (\\u00a73.5).\"}"
+      },
+      {
+        "id": 21,
+        "at": "2026-08-06T14:35:42.996537+00:00",
+        "level": "warn",
+        "source": "llm",
+        "message": "gemini-3.6-flash: no pricing entry; usd_est uses the deliberately high fallback (2.0, 12.0) USD/Mtok. The figure in llm_usage is an over-estimate, not a read price."
+      },
+      {
+        "id": 22,
+        "at": "2026-08-06T14:35:43.128131+00:00",
+        "level": "info",
+        "source": "tool",
+        "message": "add_objective({\"priority\": 1, \"title\": \"Audit and commit initial repository state and uncommitted files\"}) -> {\"objective_id\": 1}"
+      },
+      {
+        "id": 23,
+        "at": "2026-08-06T14:35:44.437561+00:00",
+        "level": "warn",
+        "source": "llm",
+        "message": "gemini-3.6-flash: no pricing entry; usd_est uses the deliberately high fallback (2.0, 12.0) USD/Mtok. The figure in llm_usage is an over-estimate, not a read price."
+      },
+      {
+        "id": 24,
+        "at": "2026-08-06T14:35:44.570735+00:00",
+        "level": "info",
+        "source": "tool",
+        "message": "add_objective({\"priority\": 2, \"title\": \"Build pre-arrival student web application MVP\"}) -> {\"objective_id\": 2}"
+      },
+      {
+        "id": 25,
+        "at": "2026-08-06T14:35:45.772151+00:00",
+        "level": "warn",
+        "source": "llm",
+        "message": "gemini-3.6-flash: no pricing entry; usd_est uses the deliberately high fallback (2.0, 12.0) USD/Mtok. The figure in llm_usage is an over-estimate, not a read price."
+      },
+      {
+        "id": 26,
+        "at": "2026-08-06T14:35:45.904879+00:00",
+        "level": "info",
+        "source": "tool",
+        "message": "add_objective({\"priority\": 3, \"title\": \"Configure deployment host and setup production deployment\"}) -> {\"objective_id\": 3}"
+      },
+      {
+        "id": 27,
+        "at": "2026-08-06T14:35:47.215793+00:00",
+        "level": "warn",
+        "source": "llm",
+        "message": "gemini-3.6-flash: no pricing entry; usd_est uses the deliberately high fallback (2.0, 12.0) USD/Mtok. The figure in llm_usage is an over-estimate, not a read price."
+      },
+      {
+        "id": 28,
+        "at": "2026-08-06T14:35:47.364004+00:00",
+        "level": "info",
+        "source": "tool",
+        "message": "add_objective({\"title\": \"Re-verify XPRIZE rules regarding Vertex AI and Gemini API usage requirements\", \"priority\": 4}) -> {\"objective_id\": 4}"
+      },
+      {
+        "id": 29,
+        "at": "2026-08-06T14:35:48.703023+00:00",
+        "level": "warn",
+        "source": "llm",
+        "message": "gemini-3.6-flash: no pricing entry; usd_est uses the deliberately high fallback (2.0, 12.0) USD/Mtok. The figure in llm_usage is an over-estimate, not a read price."
+      },
+      {
+        "id": 30,
+        "at": "2026-08-06T14:35:48.832604+00:00",
+        "level": "info",
+        "source": "tool",
+        "message": "add_objective({\"priority\": 5, \"title\": \"Implement refuse-and-route safety guardrails for legal, tax, medical, and immigration queries\"}) -> {\"objective_id\": 5}"
+      },
+      {
+        "id": 31,
+        "at": "2026-08-06T14:35:49.028982+00:00",
+        "level": "error",
+        "source": "llm",
+        "message": "permanent model failure: gemini-3.6-flash: permanent failure, not retryable: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. "
+      },
+      {
+        "id": 32,
+        "at": "2026-08-06T14:35:49.123295+00:00",
+        "level": "info",
+        "source": "dump",
+        "message": "redacted ledger dump written: {'actions': 0, 'cycles': 4, 'decisions': 1, 'events': 31, 'flags': 1, 'human_requests': 0, 'llm_usage': 7, 'objectives': 5, 'open_questions': 3, 'outbound': 0, 'payments': 0, 'spend': 0}"
+      },
+      {
+        "id": 33,
+        "at": "2026-08-06T14:37:59.230324+00:00",
+        "level": "info",
+        "source": "situation_report",
+        "message": "halted=False breaches=0 unknowns=1"
+      },
+      {
+        "id": 34,
+        "at": "2026-08-06T14:38:12.675170+00:00",
+        "level": "warn",
+        "source": "llm",
+        "message": "gemini-3.1-pro-preview: no pricing entry; usd_est uses the deliberately high fallback (2.0, 12.0) USD/Mtok. The figure in llm_usage is an over-estimate, not a read price."
+      },
+      {
+        "id": 35,
+        "at": "2026-08-06T14:38:12.988572+00:00",
+        "level": "info",
+        "source": "plan",
+        "message": "plan produced by gemini-3.1-pro-preview"
+      },
+      {
+        "id": 36,
+        "at": "2026-08-06T14:38:27.159425+00:00",
+        "level": "warn",
+        "source": "llm",
+        "message": "gemini-3.6-flash: no pricing entry; usd_est uses the deliberately high fallback (2.0, 12.0) USD/Mtok. The figure in llm_usage is an over-estimate, not a read price."
+      },
+      {
+        "id": 37,
+        "at": "2026-08-06T14:38:27.505299+00:00",
+        "level": "info",
+        "source": "tool",
+        "message": "log_decision({\"evidence\": \"Situation report shows 429 RESOURCE_EXHAUSTED error for gemini-3.6-flash API key and 7 uncommitted files without local git tool access in the toolset.\", \"rationale\": \"We cannot perform local git commits without git shell tools in the tool declaration, and Gemini API quota is exhausted ) -> {\"decision_id\": 2, \"note\": \"Published verbatim to the public log \\u2014 no personal data, no quoting (\\u00a73.5).\"}"
+      },
+      {
+        "id": 38,
+        "at": "2026-08-06T14:38:45.159364+00:00",
+        "level": "warn",
+        "source": "llm",
+        "message": "gemini-3.6-flash: no pricing entry; usd_est uses the deliberately high fallback (2.0, 12.0) USD/Mtok. The figure in llm_usage is an over-estimate, not a read price."
+      },
+      {
+        "id": 39,
+        "at": "2026-08-06T14:38:45.292726+00:00",
+        "level": "info",
+        "source": "tool",
+        "message": "request_human({\"kind\": \"PAYMENT_AUTH\", \"payload\": \"The Gemini API key is returning 429 RESOURCE_EXHAUSTED (quota exceeded). Please check Google AI Studio / GCP billing and quota limits for gemini-3.6-flash so application logic and LLM calls can function.\", \"priority\": \"interrupt\", \"default_action\": \"Park tasks wa) -> {\"request_id\": 1, \"on_timeout\": \"Park tasks waiting on Gemini API calls and continue non-LLM design work or wait for next cycle.\", \"note\": \"Do not block on this. Continue with other work.\"}"
+      },
+      {
+        "id": 40,
+        "at": "2026-08-06T14:39:04.681810+00:00",
+        "level": "warn",
+        "source": "llm",
+        "message": "gemini-3.6-flash: no pricing entry; usd_est uses the deliberately high fallback (2.0, 12.0) USD/Mtok. The figure in llm_usage is an over-estimate, not a read price."
+      },
+      {
+        "id": 41,
+        "at": "2026-08-06T14:39:04.786946+00:00",
+        "level": "info",
+        "source": "tool",
+        "message": "finish_cycle({\"handoff\": \"Logged decision #2 and requested human intervention (`request_human` interrupt) regarding the 429 RESOURCE_EXHAUSTED quota issue on gemini-3.6-flash API key. Noted that git/shell tools are not present in current tool declaration set to perform local commits for P1. Next step is for Oper) -> {\"status\": \"cycle_will_end\", \"handoff_recorded\": true}"
+      },
+      {
+        "id": 42,
+        "at": "2026-08-06T14:39:04.844355+00:00",
+        "level": "info",
+        "source": "dump",
+        "message": "redacted ledger dump written: {'actions': 0, 'cycles': 5, 'decisions': 2, 'events': 41, 'flags': 1, 'human_requests': 1, 'llm_usage': 11, 'objectives': 5, 'open_questions': 3, 'outbound': 0, 'payments': 0, 'spend': 0}"
+      },
+      {
+        "id": 43,
+        "at": "2026-08-06T14:39:49.716316+00:00",
+        "level": "info",
+        "source": "situation_report",
+        "message": "halted=False breaches=0 unknowns=1"
+      },
+      {
+        "id": 44,
+        "at": "2026-08-06T14:39:49.910004+00:00",
+        "level": "info",
+        "source": "tool",
+        "message": "finish_cycle({\"handoff\": \"Stub cycle: no model was called. The runner path was exercised end to end and the ledger was written.\"}) -> {\"status\": \"cycle_will_end\", \"handoff_recorded\": true}"
       }
     ],
     "flags": [
       {
         "key": "halt",
-        "value": "true",
-        "updated_at": "2026-08-06 13:33:21",
-        "reason": "PRE-LAUNCH TEST of the halt path \u2014 set by the Operator, not the watchdog"
+        "value": "false",
+        "updated_at": "2026-08-06 13:33:24",
+        "reason": "halt-path test complete; cleared by the Operator"
       }
     ],
-    "human_requests": [],
-    "llm_usage": [],
-    "objectives": [],
-    "open_questions": [],
+    "human_requests": [
+      {
+        "id": 1,
+        "at": "2026-08-06T14:38:45.259271+00:00",
+        "kind": "PAYMENT_AUTH",
+        "payload": "The Gemini API key is returning 429 RESOURCE_EXHAUSTED (quota exceeded). Please check Google AI Studio / GCP billing and quota limits for gemini-3.6-flash so application logic and LLM calls can function.",
+        "priority": "interrupt",
+        "deadline": "2026-08-07T02:38:45.259205+00:00",
+        "default_action": "Park tasks waiting on Gemini API calls and continue non-LLM design work or wait for next cycle.",
+        "status": "pending",
+        "resolved_at": null,
+        "response": null
+      }
+    ],
+    "llm_usage": [
+      {
+        "id": 1,
+        "at": "2026-08-06T14:35:37.142393+00:00",
+        "model": "gemini-3.1-pro-preview",
+        "input_tokens": 991,
+        "output_tokens": 145,
+        "usd_est": 0.019586,
+        "cycle_id": 4,
+        "thinking_tokens": 1322,
+        "total_tokens": 2458
+      },
+      {
+        "id": 2,
+        "at": "2026-08-06T14:35:41.709909+00:00",
+        "model": "gemini-3.6-flash",
+        "input_tokens": 6241,
+        "output_tokens": 136,
+        "usd_est": 0.019562,
+        "cycle_id": 4,
+        "thinking_tokens": 454,
+        "total_tokens": 6831
+      },
+      {
+        "id": 3,
+        "at": "2026-08-06T14:35:43.060880+00:00",
+        "model": "gemini-3.6-flash",
+        "input_tokens": 6868,
+        "output_tokens": 29,
+        "usd_est": 0.014192,
+        "cycle_id": 4,
+        "thinking_tokens": 9,
+        "total_tokens": 6906
+      },
+      {
+        "id": 4,
+        "at": "2026-08-06T14:35:44.503509+00:00",
+        "model": "gemini-3.6-flash",
+        "input_tokens": 6920,
+        "output_tokens": 27,
+        "usd_est": 0.01432,
+        "cycle_id": 4,
+        "thinking_tokens": 13,
+        "total_tokens": 6960
+      },
+      {
+        "id": 5,
+        "at": "2026-08-06T14:35:45.837764+00:00",
+        "model": "gemini-3.6-flash",
+        "input_tokens": 6974,
+        "output_tokens": 26,
+        "usd_est": 0.014404,
+        "cycle_id": 4,
+        "thinking_tokens": 12,
+        "total_tokens": 7012
+      },
+      {
+        "id": 6,
+        "at": "2026-08-06T14:35:47.296862+00:00",
+        "model": "gemini-3.6-flash",
+        "input_tokens": 7026,
+        "output_tokens": 34,
+        "usd_est": 0.014688,
+        "cycle_id": 4,
+        "thinking_tokens": 19,
+        "total_tokens": 7079
+      },
+      {
+        "id": 7,
+        "at": "2026-08-06T14:35:48.764293+00:00",
+        "model": "gemini-3.6-flash",
+        "input_tokens": 7093,
+        "output_tokens": 38,
+        "usd_est": 0.014822,
+        "cycle_id": 4,
+        "thinking_tokens": 15,
+        "total_tokens": 7146
+      },
+      {
+        "id": 8,
+        "at": "2026-08-06T14:38:12.961347+00:00",
+        "model": "gemini-3.1-pro-preview",
+        "input_tokens": 1313,
+        "output_tokens": 181,
+        "usd_est": 0.023254,
+        "cycle_id": 5,
+        "thinking_tokens": 1538,
+        "total_tokens": 3032
+      },
+      {
+        "id": 9,
+        "at": "2026-08-06T14:38:27.454711+00:00",
+        "model": "gemini-3.6-flash",
+        "input_tokens": 6599,
+        "output_tokens": 162,
+        "usd_est": 0.028738,
+        "cycle_id": 5,
+        "thinking_tokens": 1133,
+        "total_tokens": 7894
+      },
+      {
+        "id": 10,
+        "at": "2026-08-06T14:38:45.224269+00:00",
+        "model": "gemini-3.6-flash",
+        "input_tokens": 7931,
+        "output_tokens": 108,
+        "usd_est": 0.017518,
+        "cycle_id": 5,
+        "thinking_tokens": 30,
+        "total_tokens": 8069
+      },
+      {
+        "id": 11,
+        "at": "2026-08-06T14:39:04.744735+00:00",
+        "model": "gemini-3.6-flash",
+        "input_tokens": 8127,
+        "output_tokens": 103,
+        "usd_est": 0.017622,
+        "cycle_id": 5,
+        "thinking_tokens": 11,
+        "total_tokens": 8241
+      }
+    ],
+    "objectives": [
+      {
+        "id": 1,
+        "priority": 1,
+        "title": "Audit and commit initial repository state and uncommitted files",
+        "status": "open",
+        "created_at": "2026-08-06T14:35:43.094619+00:00",
+        "done_at": null
+      },
+      {
+        "id": 2,
+        "priority": 2,
+        "title": "Build pre-arrival student web application MVP",
+        "status": "open",
+        "created_at": "2026-08-06T14:35:44.537276+00:00",
+        "done_at": null
+      },
+      {
+        "id": 3,
+        "priority": 3,
+        "title": "Configure deployment host and setup production deployment",
+        "status": "open",
+        "created_at": "2026-08-06T14:35:45.871423+00:00",
+        "done_at": null
+      },
+      {
+        "id": 4,
+        "priority": 4,
+        "title": "Re-verify XPRIZE rules regarding Vertex AI and Gemini API usage requirements",
+        "status": "open",
+        "created_at": "2026-08-06T14:35:47.330533+00:00",
+        "done_at": null
+      },
+      {
+        "id": 5,
+        "priority": 5,
+        "title": "Implement refuse-and-route safety guardrails for legal, tax, medical, and immigration queries",
+        "status": "open",
+        "created_at": "2026-08-06T14:35:48.798000+00:00",
+        "done_at": null
+      }
+    ],
+    "open_questions": [
+      {
+        "id": 1,
+        "at": "2026-08-06 14:11:36",
+        "question": "XPRIZE rules may restrict or require particular Google AI services (possible Vertex AI clause). Re-verify against the current rules page before the submission narrative claims which services were used. HANDOFF.md section 2 already says to re-verify the rules summary before submitting.",
+        "blocking": 0,
+        "answer": null,
+        "answered_at": null
+      },
+      {
+        "id": 2,
+        "at": "2026-08-06 14:11:36",
+        "question": "Gemini Developer API billing on project `undra`: confirm whether pay-as-you-go became available after the billing account was upgraded from trial to full paid on 2026-08-06, or whether a prepaid top-up is still required. Blocks CHARTER.md section 1 definition-of-done item 2 until the app key can make a call.",
+        "blocking": 1,
+        "answer": "Resolved 2026-08-06. A 250 SEK prepaid top-up was added to project `undra`, linked to My Billing Account (01E0FA-16AE45-963492). Verified by direct generateContent probe: gemini-3.6-flash, gemini-3.1-flash-lite and gemini-3.1-pro-preview all return HTTP 200 on the paid key. AI Studio still requires prepay rather than pay-as-you-go for this account.",
+        "answered_at": "2026-08-06 14:31:15"
+      },
+      {
+        "id": 3,
+        "at": "2026-08-06T14:35:49.057740+00:00",
+        "question": "Model permanently unavailable: gemini-3.6-flash: permanent failure, not retryable: 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. ",
+        "blocking": 1,
+        "answer": null,
+        "answered_at": null
+      }
+    ],
     "outbound": [],
     "payments": {
       "redacted": true,

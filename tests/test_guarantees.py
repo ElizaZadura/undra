@@ -190,14 +190,29 @@ class LlmTest(unittest.TestCase):
                 "to manage your project and billing.")
         self.assertIs(classify_429(body), PermanentModelError)
 
-    def test_free_tier_pro_429_is_permanent(self):
+    def test_quota_wording_is_transient_because_it_is_ambiguous(self):
+        """CORRECTED after this misclassification aborted live cycle #4.
+
+        The free tier returns this identical wording both for "Pro is not on
+        your tier" (permanent) and for "you exceeded the per-minute limit"
+        (transient). It therefore carries no information, and the safe reading
+        is transient: retrying a permanent failure wastes seconds, while
+        treating a rate limit as permanent loses the cycle.
+        """
         body = ("You exceeded your current quota, please check your plan and "
-                "billing details.")
-        self.assertIs(classify_429(body), PermanentModelError)
+                "billing details. For more information on this error, head to: "
+                "https://ai.google.dev/gemini-api/docs/rate-limits.")
+        self.assertIs(classify_429(body), TransientModelError)
 
     def test_per_minute_429_is_transient(self):
         self.assertIs(classify_429("Quota exceeded: requests per minute"),
                       TransientModelError)
+
+    def test_api_supplied_retry_delay_is_used(self):
+        from runner.llm import retry_delay_seconds
+        body = '{"error":{"details":[{"@type":"...RetryInfo","retryDelay":"31s"}]}}'
+        self.assertEqual(retry_delay_seconds(body), 31.0)
+        self.assertIsNone(retry_delay_seconds("no retry info here"))
 
     def test_unrecognised_429_is_treated_as_transient(self):
         """Retrying a permanent failure wastes seconds; treating a rate limit

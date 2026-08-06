@@ -101,6 +101,15 @@ Each of these silently breaks something if missed.
     gitignored. The app container must not be able to see the free key —
     `CHARTER.md` §3 relies on it being absent, not forbidden.
 
+    **This rule is one-directional, and that matters** (amended 2026-08-06).
+    Since the free tier returns a permanent 429 for Pro models, the daily
+    planning call cannot run on the free key. `env/ops.env` therefore also
+    carries `GOOGLE_API_KEY_PAID`, used for exactly one thing: the planning
+    call. That does not weaken anything — the constraint is that the container
+    handling *user data* must not hold a key whose prompts may be used for
+    training. Ops handles no user data. Do not invert this and put the free key
+    in the app container for symmetry.
+
 12. **Commit a redacted ledger dump each cycle** alongside the rendered log. The
     raw `ledger.db` is gitignored and lives only on `red`; the dump is the offsite
     backup of the audit trail. Redacted means: no `payments` detail, no

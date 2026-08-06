@@ -2,14 +2,18 @@
 
 Design notes that are load-bearing:
 
-  - **Serialised.** Free tier is ~15 RPM and RPM bites long before RPD
-    (HANDOFF.md §4). There is no concurrency here on purpose; a module-level
-    lock makes that true even if a future caller gets clever.
+  - **Serialised AND paced.** Free tier is ~15 RPM and RPM bites long before RPD
+    (HANDOFF.md §4). A module-level lock makes serialisation true even if a
+    future caller gets clever — but serialising alone was not enough: six agent
+    turns fired back-to-back exceeded the limit and aborted live cycle #4. The
+    calls are therefore spaced by MIN_CALL_INTERVAL_S as well.
 
-  - **Two kinds of 429.** Verified 2026-08-06: the free key returns 429 on Pro
-    because the tier has no Pro quota, and a depleted prepaid balance returns
-    429 on every model. Neither is retryable. Backing off on those waits
-    forever on a call that cannot succeed. See classify_429().
+  - **429s are transient unless proven otherwise.** The free tier returns
+    identical wording — "exceeded your current quota, please check your plan and
+    billing details" — both when a model is off-tier entirely and when the
+    per-minute limit is hit. That string is therefore useless for classifying,
+    and an earlier version of this file that trusted it killed a working cycle.
+    Only a depleted prepaid balance is treated as permanent. See classify_429().
 
   - **No sampling parameters.** temperature, top_p and top_k are deprecated on
     Gemini 3.x and are deliberately never set (AGENTS.md #6). Use thinking_level.
@@ -22,6 +26,7 @@ from __future__ import annotations
 
 import os
 import random
+import re
 import threading
 import time
 from dataclasses import dataclass
@@ -29,24 +34,48 @@ from typing import Any, Callable
 
 _CALL_LOCK = threading.Lock()
 
+# Free tier is ~15 RPM, and RPM bites long before RPD (HANDOFF.md §4).
+# Serialising the calls is not enough on its own: six agent turns fired
+# back-to-back blew the limit and aborted a live cycle on 2026-08-06. Pace them.
+# 15 RPM is one per 4s; 4.5s leaves headroom for clock skew and the planning
+# call sharing the same minute.
+MIN_CALL_INTERVAL_S = 4.5
+_last_call_at = 0.0
+
+# Models we have already warned about pricing for, so the warning does not
+# repeat on every call and bury the events that only happen once.
+_warned_unpriced: set[str] = set()
+
+
+def _pace() -> None:
+    """Block until at least MIN_CALL_INTERVAL_S has passed since the last call.
+    Called with _CALL_LOCK held, so this is the only pacer."""
+    global _last_call_at
+    wait = MIN_CALL_INTERVAL_S - (time.monotonic() - _last_call_at)
+    if wait > 0:
+        time.sleep(wait)
+    _last_call_at = time.monotonic()
+
 # Phrases that mean "this will never succeed on this key", as opposed to "you
 # are going too fast". Matched case-insensitively against the 429 body.
+#
+# CORRECTED 2026-08-06, after this misclassification aborted a live cycle.
+# The free tier returns the SAME text — "You exceeded your current quota, please
+# check your plan and billing details" — for two completely different things:
+#
+#   (a) this model is not available on your tier at all   -> permanent
+#   (b) you have exceeded the per-minute request limit    -> transient
+#
+# So that wording carries no information and must not appear below. Only the
+# prepaid-balance message is unambiguous, because a depleted balance genuinely
+# cannot be retried around.
+#
+# Everything else defaults to transient, deliberately. The costs are asymmetric:
+# retrying a permanent failure wastes a few seconds of backoff, while treating a
+# rate limit as permanent loses the whole cycle — which is exactly what happened.
 PERMANENT_429_MARKERS = (
     "prepayment credits are depleted",
-    "check your plan and billing",
-    "billing details",
-    "quota_limit_value",
-    "free_tier",
-    "exceeded your current quota",
-)
-
-# Transient markers win if both appear — a per-minute limit is the recoverable
-# reading, and treating a recoverable error as fatal loses a cycle.
-TRANSIENT_429_MARKERS = (
-    "per minute",
-    "requests per minute",
-    "rate limit",
-    "try again",
+    "prepayment credits",
 )
 
 
@@ -61,13 +90,16 @@ class TransientModelError(RuntimeError):
 
 def classify_429(body: str) -> type[Exception]:
     low = (body or "").lower()
-    if any(m in low for m in TRANSIENT_429_MARKERS):
-        return TransientModelError
     if any(m in low for m in PERMANENT_429_MARKERS):
         return PermanentModelError
-    # Unrecognised 429: assume transient. Retrying a permanent failure costs a
-    # few wasted seconds; treating a rate limit as permanent costs the cycle.
     return TransientModelError
+
+
+def retry_delay_seconds(body: str) -> float | None:
+    """Honour the API's own RetryInfo when it supplies one, rather than guessing.
+    Matches `"retryDelay": "31s"` in the error payload."""
+    m = re.search(r'"retrydelay"\s*:\s*"(\d+(?:\.\d+)?)s"', (body or "").lower())
+    return float(m.group(1)) if m else None
 
 
 # --------------------------------------------------------------------------- #
@@ -188,6 +220,7 @@ class Gemini:
 
         for attempt in range(1, self.max_attempts + 1):
             with _CALL_LOCK:                      # serialise: ~15 RPM ceiling
+                _pace()
                 try:
                     resp = self.client.models.generate_content(
                         model=model, contents=contents, config=config)
@@ -200,20 +233,27 @@ class Gemini:
                             f"{str(exc)[:300]}") from exc
                     if attempt == self.max_attempts:
                         break
-                    sleep = delay + random.uniform(0, 1.0)
+                    # Prefer the API's own RetryInfo over our guess.
+                    suggested = retry_delay_seconds(str(exc))
+                    sleep = suggested if suggested else delay + random.uniform(0, 1.0)
                     self._emit("warn",
                                f"{model}: attempt {attempt}/{self.max_attempts} failed "
-                               f"({type(exc).__name__}); retrying in {sleep:.1f}s")
+                               f"({type(exc).__name__}); retrying in {sleep:.1f}s"
+                               + (" (API-supplied delay)" if suggested else ""))
                     time.sleep(sleep)
                     delay = min(delay * 2, 60.0)
                     continue
 
             usage = Usage.from_metadata(model, getattr(resp, "usage_metadata", None))
-            if usage.priced_by_guess:
+            if usage.priced_by_guess and model not in _warned_unpriced:
+                # Once per model per process. The warning matters, but repeating
+                # it on every call buries the events that only happen once.
+                _warned_unpriced.add(model)
                 self._emit("warn",
                            f"{model}: no pricing entry; usd_est uses the deliberately "
                            f"high fallback {FALLBACK_PRICING} USD/Mtok. The figure in "
-                           "llm_usage is an over-estimate, not a read price.")
+                           "llm_usage is an over-estimate, not a read price. "
+                           "(Logged once per model per cycle.)")
             if self.on_usage:
                 self.on_usage(usage)
             return resp
@@ -257,11 +297,30 @@ def api_key(role: str = "ops") -> str:
 
     invariants.toml pins user_data_key = "paid": the free tier may use prompts
     for training and the Operator is the data controller (CHARTER.md §3.4). The
-    ops container simply does not hold the paid key, and the app container does
-    not hold the free one — absent, not forbidden.
+    app container does not hold the free key at all — absent, not forbidden.
+
+    The ops container holds both, which is not a contradiction: AGENTS.md #11 is
+    one-directional. The APP must not see the FREE key, because that is the
+    container handling user data. Nothing forbids ops holding the paid one, and
+    it needs to, because the daily planning call uses a Pro model that the free
+    tier returns a permanent 429 for.
+
+      "ops"      free key  — the cycle loop, ~180 calls/day, costs nothing
+      "planning" paid key  — one Pro call/day over the situation report
+      "app"      paid key  — the deployed product (different container)
     """
-    var = {"ops": "GOOGLE_API_KEY", "app": "GOOGLE_API_KEY"}[role]
+    var = {"ops": "GOOGLE_API_KEY",
+           "planning": "GOOGLE_API_KEY_PAID",
+           "app": "GOOGLE_API_KEY"}[role]
     key = os.environ.get(var)
     if not key:
         raise RuntimeError(f"{var} is not set in this container's environment")
     return key
+
+
+def has_key(role: str) -> bool:
+    try:
+        api_key(role)
+        return True
+    except (KeyError, RuntimeError):
+        return False

@@ -102,21 +102,33 @@ def build(ledger, cfg) -> str:
         out.append(f"\nOPEN QUESTIONS: {len(questions)} (none blocking)")
 
     # -- what broke ---------------------------------------------------------- #
-    # Grouped, because the same failure repeating is one problem, not twenty.
-    errors = _rows(con, "SELECT source, COUNT(*) n, MAX(message) m FROM events "
-                        "WHERE level='error' AND at > ? GROUP BY source "
-                        "ORDER BY n DESC", day_ago)
-    if errors:
-        out.append(f"\nERRORS (24h):")
-        for e in errors[:5]:
+    # Scoped to the most recent cycle, not the last 24 hours. An error from six
+    # hours ago has usually been fixed since, and listing it as though it were
+    # live trains the reader to skim past the section — the same failure as
+    # §6.8's comforting narrative, inverted. Older errors are counted, not
+    # recited, so a genuinely persistent problem still shows up as a rising
+    # number without burying what just happened.
+    last_start = con.execute(
+        "SELECT MAX(started_at) FROM cycles").fetchone()[0] or day_ago
+    recent = _rows(con, "SELECT source, COUNT(*) n, MAX(message) m FROM events "
+                        "WHERE level='error' AND at >= ? GROUP BY source "
+                        "ORDER BY n DESC", last_start)
+    older = con.execute("SELECT COUNT(*) FROM events WHERE level='error' "
+                        "AND at > ? AND at < ?", (day_ago, last_start)).fetchone()[0]
+    if recent:
+        out.append("\nERRORS IN THE LAST CYCLE:")
+        for e in recent[:5]:
             times = f" ×{e['n']}" if e["n"] > 1 else ""
             out.append(f"  {e['source']}{times}: {e['m'][:140]}")
+    if older:
+        out.append(f"\nearlier errors today: {older} "
+                   "(may already be fixed — see the ledger)")
 
     failed = _rows(con, "SELECT kind, target, COUNT(*) n FROM actions "
-                        "WHERE status='failed' AND at > ? GROUP BY kind, target "
-                        "ORDER BY n DESC", day_ago)
+                        "WHERE status='failed' AND at >= ? GROUP BY kind, target "
+                        "ORDER BY n DESC", last_start)
     if failed:
-        out.append("\nFAILED ACTIONS (24h):")
+        out.append("\nFAILED ACTIONS IN THE LAST CYCLE:")
         for f in failed[:5]:
             out.append(f"  {f['kind']} -> {f['target'][:60]} ×{f['n']}")
 

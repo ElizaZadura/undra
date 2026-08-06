@@ -110,6 +110,22 @@ class Jules:
         if require_plan_approval is None:
             require_plan_approval = needs_plan_approval(prompt, title)
 
+        # autoPr is set REGARDLESS of require_plan_approval, which is a
+        # correction (2026-08-06). AGENTS.md #10 reads "requirePlanApproval for
+        # anything touching payments, auth or user data; autoPr otherwise", and
+        # that was implemented as mutually exclusive. Session
+        # 1652844863819652924 then built the entire application — code, tests,
+        # code review, XSS fix, README — reported "All plan steps completed.
+        # Ready for submission", and stopped there. No branch, no PR, and no API
+        # endpoint to submit it: :submit, :publish and :createPullRequest all
+        # return 404, so the work was only reachable by a human clicking
+        # Publish in the web UI.
+        #
+        # The two flags gate different things. requirePlanApproval gates whether
+        # Jules may START, which is the control the charter wants for anything
+        # touching user data. autoPr gates whether finished work becomes a PR,
+        # which is not a safety boundary at all — a PR still has to be reviewed
+        # and merged. Withholding it just strands completed work.
         body = {
             "prompt": prompt,
             "title": title,
@@ -118,6 +134,7 @@ class Jules:
                 "githubRepoContext": {"startingBranch": branch},
             },
             "requirePlanApproval": require_plan_approval,
+            "autoPr": True,
         }
 
         if ledger is not None:

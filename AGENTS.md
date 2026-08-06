@@ -60,6 +60,14 @@ Each of these silently breaks something if missed.
    event — do **not** halt. `gemini-3.1-pro-preview` is a preview model and
    preview models get withdrawn.
 
+   **Not every 429 is a rate limit** (verified 2026-08-06). The free key returns
+   429 on Pro because the tier has *no* Pro quota, and a depleted prepaid balance
+   returns 429 on every model. Neither is retryable — backing off (item 8) waits
+   forever on a call that cannot succeed. Distinguish by the error body: a 429
+   whose `status` is `RESOURCE_EXHAUSTED` and whose `message` mentions quota,
+   plan, billing or prepayment is **permanent** — fall back or park the task. A
+   429 without that language is a genuine per-minute limit; back off and retry.
+
 6. **Do not set `temperature`, `top_p` or `top_k`.** Deprecated on Gemini 3.x.
    Use `thinking_level`, not `thinking_budget`.
 
@@ -73,6 +81,15 @@ Each of these silently breaks something if missed.
 
 9. **Log every LLM call to `llm_usage`** with token counts and cost estimate.
    That table is the soft spend cap and the submission's API-usage evidence.
+
+   **Count thinking tokens or the cap is fiction.** Gemini 3.x bills reasoning
+   tokens, and they do not appear in `candidatesTokenCount`. Measured 2026-08-06
+   on `gemini-3.6-flash`: `promptTokenCount=7`, `candidatesTokenCount=1`,
+   `totalTokenCount=109` — the obvious two fields account for 8 of 109 billed
+   tokens. Record `usageMetadata.totalTokenCount` and store the reasoning count
+   separately (`thinking_tokens`, added to the schema); price it at the output
+   rate. A runner that logs only input+output undercounts the *only* spend
+   ceiling this system has by roughly an order of magnitude.
 
 10. **Jules sessions:** `requirePlanApproval` for anything touching payments,
     auth or user data; `autoPr` otherwise. On CI failure Coral files a follow-up

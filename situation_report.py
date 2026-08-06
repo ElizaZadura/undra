@@ -143,9 +143,15 @@ CREATE TABLE IF NOT EXISTS spend (
   usd REAL NOT NULL, description TEXT, idempotency_key TEXT UNIQUE);
 
 -- The API has no hard billing cap, so this table *is* the cap.
+--
+-- thinking_tokens is not decoration. Gemini 3.x bills reasoning tokens and they
+-- appear in neither promptTokenCount nor candidatesTokenCount: a 7-in/1-out call
+-- measured 109 total. Logging only input+output undercounts the cap ~12x.
+-- total_tokens is what the API actually billed; keep it as the source of truth.
 CREATE TABLE IF NOT EXISTS llm_usage (
   id INTEGER PRIMARY KEY, at TEXT NOT NULL, model TEXT NOT NULL,
-  input_tokens INTEGER, output_tokens INTEGER, usd_est REAL, cycle_id INTEGER);
+  input_tokens INTEGER, output_tokens INTEGER, thinking_tokens INTEGER,
+  total_tokens INTEGER, usd_est REAL, cycle_id INTEGER);
 
 CREATE TABLE IF NOT EXISTS objectives (
   id INTEGER PRIMARY KEY, priority INTEGER NOT NULL, title TEXT NOT NULL,

@@ -125,6 +125,29 @@ capped at $20. It does **not** cover the Gemini Developer API, which is excluded
 from trial credits and billed against Prepay separately. The two pots stay
 distinct: infra on credit, Coral's model spend on Prepay.
 
+**Two GCP projects, not one** (recorded 2026-08-06):
+
+| Project | Billing | Key lives in | Serves |
+|---|---|---|---|
+| `undra-free` | none — free tier | `env/ops.env` | Coral's operator loop |
+| `undra` | Cloud billing account on a limit-capped Revolut card, own budget alerts | `env/app.env` | the deployed product |
+
+**Verified against both keys 2026-08-06** (`generateContent`, not just `models.list`
+— the list endpoint returns models the tier cannot actually serve):
+
+- The free key serves `gemini-3.6-flash` and `gemini-3.1-flash-lite`. It returns
+  **429** on `gemini-3.1-pro-preview` — there is no free-tier Pro quota, so the
+  daily planning call falls back to `planning_fallback` unless it runs on a
+  billed key. Note this 429 is *permanent*, not a rate limit: retrying with
+  backoff will never succeed.
+- The paid key returns **429 RESOURCE_EXHAUSTED, "Your prepayment credits are
+  depleted"** on *every* model. The Cloud billing account attached to `undra`
+  pays for Cloud Run and the rest of the infra, but the **Gemini Developer API
+  bills against a separate prepaid balance**, which is at zero. Attaching a
+  billing account does not fund it. Until that balance is topped up at
+  ai.studio, the deployed app cannot make its Gemini call — which is
+  `CHARTER.md` §1 definition-of-done item 2 and a competition requirement.
+
 Spend protection is now three independent layers, which is deliberate — each
 catches what the others miss:
 

@@ -144,6 +144,17 @@ def build(ledger, cfg) -> str:
             out.append("    Each attempt succeeded and changed nothing. Coral "
                        "cannot break this by retrying.")
 
+    # -- build tasks waiting on a human ------------------------------------- #
+    # A Jules session parked at "plan generated" reports COMPLETED and looks
+    # finished from every angle except its activity list. One sat unnoticed for
+    # five hours on 2026-08-07 while the agent described it as stalled work.
+    # Read from the ledger, not the API, so the digest never blocks on network.
+    filed = _rows(con, "SELECT target, at FROM actions WHERE kind='JULES_SESSION' "
+                       "AND status='ok' AND at > ? ORDER BY at DESC", day_ago)
+    if filed:
+        out.append(f"\nBUILD TASKS FILED (24h): {len(filed)}")
+        out.append("  if one is waiting on plan approval, reply:  approve jules <session-id>")
+
     # -- what is blocked ----------------------------------------------------- #
     questions = _rows(con, "SELECT id, question, blocking FROM open_questions "
                            "WHERE answer IS NULL ORDER BY blocking DESC, at")

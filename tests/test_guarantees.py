@@ -202,6 +202,37 @@ class LedgerTest(unittest.TestCase):
         self.assertIn('"row_count": 1', text, "payments should still be counted")
 
 
+class PlanApprovalTest(unittest.TestCase):
+    """requirePlanApproval puts a human between the agent and code that touches
+    payments, auth or user data. An agent that can approve its own plans has no
+    such gate, so the capability must exist only on the Operator's channel."""
+
+    def test_coral_has_no_plan_approval_tool(self):
+        from runner import tools
+        names = set(tools.TOOL_IMPLS) | {t["name"] for t in tools.declarations()}
+        for n in names:
+            self.assertNotIn("approve", n.lower(),
+                             f"tool {n!r} looks like it could approve something")
+
+    def test_approve_plan_is_called_only_from_the_operator_channel(self):
+        root = Path(__file__).resolve().parents[1]
+        callers = []
+        for f in (root / "runner").glob("*.py"):
+            if "approve_plan(" in f.read_text() and f.name != "jules.py":
+                callers.append(f.name)
+        self.assertEqual(callers, ["telegram.py"],
+                         f"approve_plan reachable from {callers}; it must be "
+                         "callable only from the Operator's Telegram channel")
+
+    def test_the_operator_channel_checks_the_chat_id_first(self):
+        """The command is only as safe as the check that the sender is Eliza."""
+        src = (Path(__file__).resolve().parents[1] / "runner" / "telegram.py").read_text()
+        guard = src.index('if u.chat_id != str(tg.chat_id)')
+        approve = src.index('parts[1] == "jules"')
+        self.assertLess(guard, approve,
+                        "the chat-id check must precede the Jules approval branch")
+
+
 class CiVerdictTest(unittest.TestCase):
     """CHARTER.md §5 authorises merging PRs *that pass CI*. Absence of CI is not
     a pass — a repository with no checks has demonstrated nothing, and treating

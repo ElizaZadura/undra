@@ -335,15 +335,34 @@ def collect_stuck_work(rep: Report, con, cfg: dict) -> None:
            HAVING cycles >= ?
            ORDER BY cycles DESC""", (day_ago, threshold)).fetchall()
 
-    # Same kind, different wording each cycle: group by kind alone as a second
-    # pass, so re-described work is still caught.
-    by_kind = con.execute(
-        """SELECT kind, COUNT(DISTINCT cycle_id) cycles, COUNT(*) n,
-                  GROUP_CONCAT(DISTINCT target) targets
-           FROM actions
-           WHERE at > ? AND cycle_id IS NOT NULL AND status='ok'
-           GROUP BY kind
-           HAVING cycles >= ?""", (day_ago, threshold)).fetchall()
+    # A second pass for the same work re-described under a different title. This
+    # one needs care: an earlier version grouped by kind alone, which fired
+    # whenever three cycles filed any three build tasks — normal productive work.
+    # On 2026-08-07 that manufactured a phantom "5 cycles, no state change" out
+    # of three unrelated jobs, and the agent repeated the invented number to the
+    # Operator in an escalation. A detector that fabricates evidence is worse
+    # than no detector.
+    #
+    # The fix is to require corroboration: repeated activity only counts as stuck
+    # if the things that mark real progress have ALSO not moved. If an objective
+    # closed or a pull request merged in the window, the loop is producing
+    # outcomes and repeated filings are just how the work gets done.
+    progress = con.execute(
+        """SELECT (SELECT COUNT(*) FROM objectives
+                    WHERE done_at IS NOT NULL AND done_at > ?)
+                + (SELECT COUNT(*) FROM actions
+                    WHERE kind='PR_MERGE' AND status='ok' AND at > ?)""",
+        (day_ago, day_ago)).fetchone()[0]
+
+    by_kind = []
+    if not progress:
+        by_kind = con.execute(
+            """SELECT kind, COUNT(DISTINCT cycle_id) cycles, COUNT(*) n,
+                      GROUP_CONCAT(DISTINCT target) targets
+               FROM actions
+               WHERE at > ? AND cycle_id IS NOT NULL AND status='ok'
+               GROUP BY kind
+               HAVING cycles >= ?""", (day_ago, threshold)).fetchall()
 
     lines: list[str] = []
     for r in rows:
@@ -354,9 +373,10 @@ def collect_stuck_work(rep: Report, con, cfg: dict) -> None:
         targets = [t for t in (r["targets"] or "").split(",") if t]
         if len(targets) > 1:
             lines.append(
-                f"{r['kind']}: {r['cycles']} consecutive cycles, {len(targets)} "
-                f"differently-worded targets — likely the same work re-described. "
-                f"Latest: {targets[-1][:70]}")
+                f"{r['kind']}: {r['cycles']} cycles, {len(targets)} differently-worded "
+                f"targets, and nothing completed in that window — possibly the same "
+                f"work re-described. Check each before concluding it: "
+                f"{targets[-1][:60]}")
 
     if lines:
         rep.sections["REPEATED WORK WITHOUT PROGRESS"] = lines + [

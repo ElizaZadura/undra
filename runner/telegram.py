@@ -223,6 +223,49 @@ def process_updates(tg: Telegram, ledger, updates: list[Update]) -> int | None:
             continue
 
         parts = text.split()
+
+        # `approve jules <session-id>` — approve a Jules plan from the phone.
+        #
+        # Jules holds a session at "plan generated" until a human approves it,
+        # which normally means opening a browser. A session sat unnoticed for
+        # five hours on 2026-08-07 for exactly that reason, and the agent
+        # escalated it as stalled work rather than as a waiting approval.
+        #
+        # This is deliberately ONLY on the Operator's channel. Coral has no
+        # corresponding tool and must never get one: a gate the agent can open
+        # for itself is not a gate. Approval arrives by the same route as every
+        # other approval, from the one chat id that is checked above.
+        if len(parts) == 3 and parts[0] in ("approve", "deny") and parts[1] == "jules":
+            session_id = parts[2]
+            if parts[0] == "deny":
+                ledger.event("info", "telegram",
+                             f"Operator declined Jules plan for session {session_id}; "
+                             "the session stays paused and needs re-filing or a "
+                             "decision to drop it")
+                continue
+            try:
+                from .jules import Jules
+                Jules().approve_plan(session_id)
+            except Exception as exc:  # noqa: BLE001
+                ledger.event("error", "telegram",
+                             f"could not approve Jules plan {session_id}: {exc}")
+                try:
+                    tg.send(f"[undra] Could not approve Jules session {session_id}: "
+                            f"{str(exc)[:180]}")
+                except Exception:  # noqa: BLE001
+                    pass
+                continue
+            ledger.event("info", "telegram",
+                         f"Operator approved the Jules plan for session {session_id}")
+            try:
+                tg.send(f"[undra] Approved the plan for Jules session {session_id}. "
+                        "It will start writing code; the pull request still has to "
+                        "pass CI before anything merges.\n\n"
+                        "(automated message from the undra agent system)")
+            except Exception:  # noqa: BLE001
+                pass
+            continue
+
         if len(parts) == 2 and parts[0] in ("approve", "deny") and parts[1].isdigit():
             rid = int(parts[1])
             row = ledger.con.execute(

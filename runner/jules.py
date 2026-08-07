@@ -100,6 +100,25 @@ class Jules:
         return self._request("GET", f"sessions/{session_id}/activities"
                              ).get("activities", [])
 
+    def approve_plan(self, session_id: str) -> dict:
+        """Release a session that is waiting on plan approval.
+
+        VERIFIED 2026-08-07 — `POST sessions/{id}:approvePlan` returns 200 with an
+        empty body and moves the session to IN_PROGRESS.
+
+        **Never expose this to Coral.** requirePlanApproval exists to put a human
+        between the agent and code that touches payments, auth or user data. An
+        agent that can approve its own plans has no such gate. This is called
+        from exactly one place — the Operator's Telegram channel, after the chat
+        id has been checked.
+
+        Found by accident, and worth recording how: probing for the endpoint with
+        a POST *performed* the approval rather than reporting that it existed.
+        Probe unknown POST routes with a deliberately invalid body so validation
+        rejects them, or not at all.
+        """
+        return self._request("POST", f"sessions/{session_id}:approvePlan", {})
+
     # -- unverified --------------------------------------------------------- #
 
     def create_session(self, *, repo: str, prompt: str, title: str,

@@ -84,6 +84,16 @@ class TestAppGuardrails(unittest.TestCase):
                 self.assertEqual(res["routing"][0]["name"], "1177 Vårdguiden")
                 self.assertEqual(res["routing"][0]["url"], "https://www.1177.se")
 
+    def test_medical_refusal_fever_sick_query(self):
+        query = "I feel sick and have a fever"
+        res = check_query_guardrails(query)
+        self.assertIsNotNone(res)
+        self.assertTrue(res["refused"])
+        self.assertEqual(res["category"], "medical_safety")
+        self.assertIn("1177", res["authority"])
+        self.assertEqual(res["routing"][0]["name"], "1177 Vårdguiden")
+        self.assertEqual(res["routing"][0]["url"], "https://www.1177.se")
+
     def test_safe_queries_do_not_refuse(self):
         queries = [
             "How do I book a laundry room tvättstuga?",

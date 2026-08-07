@@ -205,11 +205,12 @@ def run(*, stub_model: bool = False, use_telegram: bool = True) -> int:
         model = "stub"
     else:
         client = llm.Gemini(
-            llm.api_key("ops"),
+            llm.api_key("ops"), role="ops",
             on_usage=lambda u: led.llm_usage(
                 model=u.model, input_tokens=u.input_tokens,
                 output_tokens=u.output_tokens, thinking_tokens=u.thinking_tokens,
-                total_tokens=u.total_tokens, usd_est=u.usd_est, cycle_id=cyc.id),
+                total_tokens=u.total_tokens, usd_est=u.usd_est, cycle_id=cyc.id,
+                key_role=u.key_role),
             on_event=lambda level, msg: led.event(level, "llm", msg),
         )
         model = cfg.model_for("work")
@@ -238,11 +239,12 @@ def run(*, stub_model: bool = False, use_telegram: bool = True) -> int:
                       f"smaller than HANDOFF.md §4 assumed — this costs real money "
                       f"and should be reviewed. Error: {str(exc)[:200]}")
             paid_client = llm.Gemini(
-                llm.api_key("planning"),
+                llm.api_key("planning"), role="planning",
                 on_usage=lambda u: led.llm_usage(
                     model=u.model, input_tokens=u.input_tokens,
                     output_tokens=u.output_tokens, thinking_tokens=u.thinking_tokens,
-                    total_tokens=u.total_tokens, usd_est=u.usd_est, cycle_id=cyc.id),
+                    total_tokens=u.total_tokens, usd_est=u.usd_est, cycle_id=cyc.id,
+                key_role=u.key_role),
                 on_event=lambda level, msg: led.event(level, "llm", msg),
             )
             handoff = _agent_loop(ctx, paid_client, model, report, plan,
@@ -293,11 +295,12 @@ def _plan(cfg, led: Ledger, cyc: CycleRecorder, report: str) -> str:
 
     def _client(role: str):
         return llm.Gemini(
-            llm.api_key(role),
+            llm.api_key(role), role=role,
             on_usage=lambda u: led.llm_usage(
                 model=u.model, input_tokens=u.input_tokens,
                 output_tokens=u.output_tokens, thinking_tokens=u.thinking_tokens,
-                total_tokens=u.total_tokens, usd_est=u.usd_est, cycle_id=cyc.id),
+                total_tokens=u.total_tokens, usd_est=u.usd_est, cycle_id=cyc.id,
+                key_role=u.key_role),
             on_event=lambda level, msg: led.event(level, "llm", msg),
         )
 

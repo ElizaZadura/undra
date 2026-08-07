@@ -69,6 +69,36 @@ def build(ledger, cfg) -> str:
     out.append(f"\nSPEND: ${spent:.2f} of ${cap_total:.0f} total "
                f"(LLM ${llm:.2f} of ${cap_llm:.0f}), {calls} model calls in 24h")
 
+    # Free-tier ceiling, measured rather than assumed. HANDOFF.md §4 budgeted on
+    # ~1,500 free requests/day; the observed figure has been an order of
+    # magnitude lower, and Google publishes no number and changes it without
+    # notice. Reporting what actually happened turns a documentation question
+    # into a measurement, so a change in the subscription or the tier shows up
+    # here rather than as a surprise fallback.
+    today = now.strftime("%Y-%m-%d")
+    free = con.execute(
+        "SELECT COUNT(*) FROM llm_usage WHERE key_role='ops' AND at LIKE ?",
+        (today + "%",)).fetchone()[0]
+    paid = con.execute(
+        "SELECT COUNT(*) FROM llm_usage WHERE key_role IN ('planning','app') "
+        "AND at LIKE ?", (today + "%",)).fetchone()[0]
+    unknown = con.execute(
+        "SELECT COUNT(*) FROM llm_usage WHERE (key_role IS NULL OR key_role='') "
+        "AND at LIKE ?", (today + "%",)).fetchone()[0]
+    exhausted = con.execute(
+        "SELECT MIN(at) FROM events WHERE at LIKE ? AND "
+        "message LIKE '%free-tier quota exhausted%'", (today + "%",)).fetchone()[0]
+    if free or paid or unknown:
+        line = f"  free tier: {free} call(s) today"
+        if exhausted:
+            line += f", gave out at {exhausted[11:16]}"
+        else:
+            line += ", still serving"
+        line += f" · paid: {paid}"
+        if unknown:
+            line += f" · unattributed: {unknown}"
+        out.append(line)
+
     # -- what was decided ---------------------------------------------------- #
     decisions = _rows(con, "SELECT summary FROM decisions WHERE at > ? ORDER BY at",
                       day_ago)

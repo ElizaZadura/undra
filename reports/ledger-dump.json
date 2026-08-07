@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-07T12:14:17.056328+00:00",
+  "generated_at": "2026-08-07T12:33:04.477050+00:00",
   "note": "Redacted dump of the operating ledger. Payments detail and recipient columns are omitted; see runner/ledger.py. The authoritative ledger lives only on the lab box.",
   "tables": {
     "actions": [
@@ -226,6 +226,13 @@
         "ended_at": "2026-08-07T12:14:17.022741+00:00",
         "status": "ok",
         "handoff": "[This cycle fell back to the paid API key: the free tier's daily quota was exhausted.] What changed:\n- Inspected PR #5 (web application MVP) and confirmed it was already merged into main by the Operator (decision timestamp 2026-08-07 12:09).\n- Reviewed main branch app/main.py and tests/test_app_guardrails.py to assess P2 (image-only refusal guardrails).\n- Logged decision #16 to extend refusal guardrails to cover image-only queries.\n- Filed Jules task 11549309387792164932 to update app/main.py (running check_query_guardrails on Gemini output to catch image-only queries touching restricted categories) and add unit tests in tests/test_app_guardrails.py.\n\nCurrent state:\n- P1 is complete (PR #5 merged).\n- P2 Jules task 11549309387792164932 is filed and processing.\n\nIntended next steps:\n1. In the next cycle, check status of Jules task 11549309387792164932 via jules_task_status.\n2. Review and merge the PR produced by Jules once CI passes.\n3. Proceed to P5 (configure production deployment host on Cloud Run).\n\nUncertainties:\n- Time required for Jules task completion and plan approval if needed."
+      },
+      {
+        "id": 17,
+        "started_at": "2026-08-07T12:33:04.340133+00:00",
+        "ended_at": "2026-08-07T12:33:04.451609+00:00",
+        "status": "idle",
+        "handoff": "Stub cycle: no model was called. The runner path was exercised end to end and the ledger was written."
       }
     ],
     "decisions": [
@@ -388,6 +395,16 @@
         "evidence": "P2 in Situation Report: app/main.py runs check_query_guardrails only when user_text is present, so image-only queries bypass pre-LLM check. CHARTER.md \u00a73.3 prohibits advising on immigration, tax, legal, or medical matters.",
         "reversible": 1,
         "falsifier": "An image query containing a Migrationsverket letter or medical document receives advice instead of a structured refusal response."
+      },
+      {
+        "id": 17,
+        "cycle_id": null,
+        "at": "2026-08-07 12:24:26",
+        "summary": "Closed PR #4 and deleted three dead branches left over from the conflict loop.",
+        "rationale": "PR #4 was created at 09:41 as one of five attempts to reconcile PR #1 with main, and its base was PR #1's own branch rather than main \u2014 so nothing in it could have reached main even if merged. Verified before closing that it held no unique content: every source file was an older copy of what main already has, and its copy of the app tests had 9 to main's 10 with none unique. The other 14 changed files were regenerated docs/ and reports/.",
+        "evidence": "PR #4 base=jules-1652844863819652924-781c3b6b (closed PR #1's branch); diff against main showed only stale versions; test function names on the branch were a subset of main's.",
+        "reversible": 1,
+        "falsifier": "If some behaviour later turns out to have existed only on those branches, deleting them was premature \u2014 though the commits remain reachable through the closed PRs."
       }
     ],
     "events": [
@@ -2168,6 +2185,27 @@
         "level": "info",
         "source": "tool",
         "message": "finish_cycle({\"confused\": false, \"handoff\": \"What changed:\\n- Inspected PR #5 (web application MVP) and confirmed it was already merged into main by the Operator (decision timestamp 2026-08-07 12:09).\\n- Reviewed main branch app/main.py and tests/test_app_guardrails.py to assess P2 (image-only refusal guardrails) -> {\"status\": \"cycle_will_end\", \"handoff_recorded\": true}"
+      },
+      {
+        "id": 255,
+        "at": "2026-08-07T12:14:17.076098+00:00",
+        "level": "info",
+        "source": "dump",
+        "message": "redacted ledger dump written: {'actions': 10, 'cycles': 16, 'decisions': 16, 'events': 254, 'flags': 3, 'human_requests': 1, 'llm_usage': 75, 'objectives': 9, 'open_questions': 5, 'outbound': 0, 'payments': 0, 'spend': 0}"
+      },
+      {
+        "id": 256,
+        "at": "2026-08-07T12:33:04.222624+00:00",
+        "level": "warn",
+        "source": "situation_report",
+        "message": "halted=False breaches=3 unknowns=1"
+      },
+      {
+        "id": 257,
+        "at": "2026-08-07T12:33:04.418611+00:00",
+        "level": "info",
+        "source": "tool",
+        "message": "finish_cycle({\"handoff\": \"Stub cycle: no model was called. The runner path was exercised end to end and the ledger was written.\"}) -> {\"status\": \"cycle_will_end\", \"handoff_recorded\": true}"
       }
     ],
     "flags": [
@@ -2215,7 +2253,8 @@
         "usd_est": 0.019586,
         "cycle_id": 4,
         "thinking_tokens": 1322,
-        "total_tokens": 2458
+        "total_tokens": 2458,
+        "key_role": null
       },
       {
         "id": 2,
@@ -2226,7 +2265,8 @@
         "usd_est": 0.019562,
         "cycle_id": 4,
         "thinking_tokens": 454,
-        "total_tokens": 6831
+        "total_tokens": 6831,
+        "key_role": null
       },
       {
         "id": 3,
@@ -2237,7 +2277,8 @@
         "usd_est": 0.014192,
         "cycle_id": 4,
         "thinking_tokens": 9,
-        "total_tokens": 6906
+        "total_tokens": 6906,
+        "key_role": null
       },
       {
         "id": 4,
@@ -2248,7 +2289,8 @@
         "usd_est": 0.01432,
         "cycle_id": 4,
         "thinking_tokens": 13,
-        "total_tokens": 6960
+        "total_tokens": 6960,
+        "key_role": null
       },
       {
         "id": 5,
@@ -2259,7 +2301,8 @@
         "usd_est": 0.014404,
         "cycle_id": 4,
         "thinking_tokens": 12,
-        "total_tokens": 7012
+        "total_tokens": 7012,
+        "key_role": null
       },
       {
         "id": 6,
@@ -2270,7 +2313,8 @@
         "usd_est": 0.014688,
         "cycle_id": 4,
         "thinking_tokens": 19,
-        "total_tokens": 7079
+        "total_tokens": 7079,
+        "key_role": null
       },
       {
         "id": 7,
@@ -2281,7 +2325,8 @@
         "usd_est": 0.014822,
         "cycle_id": 4,
         "thinking_tokens": 15,
-        "total_tokens": 7146
+        "total_tokens": 7146,
+        "key_role": null
       },
       {
         "id": 8,
@@ -2292,7 +2337,8 @@
         "usd_est": 0.023254,
         "cycle_id": 5,
         "thinking_tokens": 1538,
-        "total_tokens": 3032
+        "total_tokens": 3032,
+        "key_role": null
       },
       {
         "id": 9,
@@ -2303,7 +2349,8 @@
         "usd_est": 0.028738,
         "cycle_id": 5,
         "thinking_tokens": 1133,
-        "total_tokens": 7894
+        "total_tokens": 7894,
+        "key_role": null
       },
       {
         "id": 10,
@@ -2314,7 +2361,8 @@
         "usd_est": 0.017518,
         "cycle_id": 5,
         "thinking_tokens": 30,
-        "total_tokens": 8069
+        "total_tokens": 8069,
+        "key_role": null
       },
       {
         "id": 11,
@@ -2325,7 +2373,8 @@
         "usd_est": 0.017622,
         "cycle_id": 5,
         "thinking_tokens": 11,
-        "total_tokens": 8241
+        "total_tokens": 8241,
+        "key_role": null
       },
       {
         "id": 12,
@@ -2336,7 +2385,8 @@
         "usd_est": 0.01092,
         "cycle_id": 8,
         "thinking_tokens": 137,
-        "total_tokens": 6680
+        "total_tokens": 6680,
+        "key_role": null
       },
       {
         "id": 13,
@@ -2347,7 +2397,8 @@
         "usd_est": 0.015132,
         "cycle_id": 8,
         "thinking_tokens": 531,
-        "total_tokens": 7376
+        "total_tokens": 7376,
+        "key_role": null
       },
       {
         "id": 14,
@@ -2358,7 +2409,8 @@
         "usd_est": 0.014607,
         "cycle_id": 8,
         "thinking_tokens": 13,
-        "total_tokens": 7878
+        "total_tokens": 7878,
+        "key_role": null
       },
       {
         "id": 15,
@@ -2369,7 +2421,8 @@
         "usd_est": 0.011109,
         "cycle_id": 10,
         "thinking_tokens": 152,
-        "total_tokens": 6746
+        "total_tokens": 6746,
+        "key_role": null
       },
       {
         "id": 16,
@@ -2380,7 +2433,8 @@
         "usd_est": 0.011342,
         "cycle_id": 10,
         "thinking_tokens": 183,
-        "total_tokens": 6777
+        "total_tokens": 6777,
+        "key_role": null
       },
       {
         "id": 17,
@@ -2391,7 +2445,8 @@
         "usd_est": 0.011359,
         "cycle_id": 10,
         "thinking_tokens": 107,
-        "total_tokens": 6989
+        "total_tokens": 6989,
+        "key_role": null
       },
       {
         "id": 18,
@@ -2402,7 +2457,8 @@
         "usd_est": 0.015357,
         "cycle_id": 10,
         "thinking_tokens": 365,
-        "total_tokens": 8098
+        "total_tokens": 8098,
+        "key_role": null
       },
       {
         "id": 19,
@@ -2413,7 +2469,8 @@
         "usd_est": 0.013898,
         "cycle_id": 10,
         "thinking_tokens": 93,
-        "total_tokens": 8361
+        "total_tokens": 8361,
+        "key_role": null
       },
       {
         "id": 20,
@@ -2424,7 +2481,8 @@
         "usd_est": 0.015366,
         "cycle_id": 10,
         "thinking_tokens": 185,
-        "total_tokens": 8812
+        "total_tokens": 8812,
+        "key_role": null
       },
       {
         "id": 21,
@@ -2435,7 +2493,8 @@
         "usd_est": 0.011786,
         "cycle_id": 12,
         "thinking_tokens": 111,
-        "total_tokens": 7349
+        "total_tokens": 7349,
+        "key_role": null
       },
       {
         "id": 22,
@@ -2446,7 +2505,8 @@
         "usd_est": 0.012183,
         "cycle_id": 12,
         "thinking_tokens": 164,
-        "total_tokens": 7402
+        "total_tokens": 7402,
+        "key_role": null
       },
       {
         "id": 23,
@@ -2457,7 +2517,8 @@
         "usd_est": 0.046561,
         "cycle_id": 12,
         "thinking_tokens": 1312,
-        "total_tokens": 25721
+        "total_tokens": 25721,
+        "key_role": null
       },
       {
         "id": 24,
@@ -2468,7 +2529,8 @@
         "usd_est": 0.043788,
         "cycle_id": 12,
         "thinking_tokens": 467,
-        "total_tokens": 26484
+        "total_tokens": 26484,
+        "key_role": null
       },
       {
         "id": 25,
@@ -2479,7 +2541,8 @@
         "usd_est": 0.040111,
         "cycle_id": 12,
         "thinking_tokens": 31,
-        "total_tokens": 26565
+        "total_tokens": 26565,
+        "key_role": null
       },
       {
         "id": 26,
@@ -2490,7 +2553,8 @@
         "usd_est": 0.042415,
         "cycle_id": 12,
         "thinking_tokens": 61,
-        "total_tokens": 26997
+        "total_tokens": 26997,
+        "key_role": null
       },
       {
         "id": 27,
@@ -2501,7 +2565,8 @@
         "usd_est": 0.043875,
         "cycle_id": 12,
         "thinking_tokens": 231,
-        "total_tokens": 27486
+        "total_tokens": 27486,
+        "key_role": null
       },
       {
         "id": 28,
@@ -2512,7 +2577,8 @@
         "usd_est": 0.044601,
         "cycle_id": 12,
         "thinking_tokens": 375,
-        "total_tokens": 27974
+        "total_tokens": 27974,
+        "key_role": null
       },
       {
         "id": 29,
@@ -2523,7 +2589,8 @@
         "usd_est": 0.04503,
         "cycle_id": 12,
         "thinking_tokens": 99,
-        "total_tokens": 28396
+        "total_tokens": 28396,
+        "key_role": null
       },
       {
         "id": 30,
@@ -2534,7 +2601,8 @@
         "usd_est": 0.047099,
         "cycle_id": 12,
         "thinking_tokens": 257,
-        "total_tokens": 29015
+        "total_tokens": 29015,
+        "key_role": null
       },
       {
         "id": 31,
@@ -2545,7 +2613,8 @@
         "usd_est": 0.012096,
         "cycle_id": 13,
         "thinking_tokens": 61,
-        "total_tokens": 7748
+        "total_tokens": 7748,
+        "key_role": null
       },
       {
         "id": 32,
@@ -2556,7 +2625,8 @@
         "usd_est": 0.012719,
         "cycle_id": 13,
         "thinking_tokens": 137,
-        "total_tokens": 7831
+        "total_tokens": 7831,
+        "key_role": null
       },
       {
         "id": 33,
@@ -2567,7 +2637,8 @@
         "usd_est": 0.012288,
         "cycle_id": 13,
         "thinking_tokens": 17,
-        "total_tokens": 8060
+        "total_tokens": 8060,
+        "key_role": null
       },
       {
         "id": 34,
@@ -2578,7 +2649,8 @@
         "usd_est": 0.048807,
         "cycle_id": 13,
         "thinking_tokens": 1331,
-        "total_tokens": 26646
+        "total_tokens": 26646,
+        "key_role": null
       },
       {
         "id": 35,
@@ -2589,7 +2661,8 @@
         "usd_est": 0.040557,
         "cycle_id": 13,
         "thinking_tokens": 35,
-        "total_tokens": 26754
+        "total_tokens": 26754,
+        "key_role": null
       },
       {
         "id": 36,
@@ -2600,7 +2673,8 @@
         "usd_est": 0.044912,
         "cycle_id": 13,
         "thinking_tokens": 601,
-        "total_tokens": 27465
+        "total_tokens": 27465,
+        "key_role": null
       },
       {
         "id": 37,
@@ -2611,7 +2685,8 @@
         "usd_est": 0.043011,
         "cycle_id": 13,
         "thinking_tokens": 58,
-        "total_tokens": 28318
+        "total_tokens": 28318,
+        "key_role": null
       },
       {
         "id": 38,
@@ -2622,7 +2697,8 @@
         "usd_est": 0.049098,
         "cycle_id": 13,
         "thinking_tokens": 598,
-        "total_tokens": 29776
+        "total_tokens": 29776,
+        "key_role": null
       },
       {
         "id": 39,
@@ -2633,7 +2709,8 @@
         "usd_est": 0.045906,
         "cycle_id": 13,
         "thinking_tokens": 13,
-        "total_tokens": 29972
+        "total_tokens": 29972,
+        "key_role": null
       },
       {
         "id": 40,
@@ -2644,7 +2721,8 @@
         "usd_est": 0.045913,
         "cycle_id": 13,
         "thinking_tokens": 70,
-        "total_tokens": 30173
+        "total_tokens": 30173,
+        "key_role": null
       },
       {
         "id": 41,
@@ -2655,7 +2733,8 @@
         "usd_est": 0.046179,
         "cycle_id": 13,
         "thinking_tokens": 70,
-        "total_tokens": 30410
+        "total_tokens": 30410,
+        "key_role": null
       },
       {
         "id": 42,
@@ -2666,7 +2745,8 @@
         "usd_est": 0.046715,
         "cycle_id": 13,
         "thinking_tokens": 17,
-        "total_tokens": 30971
+        "total_tokens": 30971,
+        "key_role": null
       },
       {
         "id": 43,
@@ -2677,7 +2757,8 @@
         "usd_est": 0.047764,
         "cycle_id": 13,
         "thinking_tokens": 18,
-        "total_tokens": 31663
+        "total_tokens": 31663,
+        "key_role": null
       },
       {
         "id": 44,
@@ -2688,7 +2769,8 @@
         "usd_est": 0.05598,
         "cycle_id": 13,
         "thinking_tokens": 141,
-        "total_tokens": 36600
+        "total_tokens": 36600,
+        "key_role": null
       },
       {
         "id": 45,
@@ -2699,7 +2781,8 @@
         "usd_est": 0.06276,
         "cycle_id": 13,
         "thinking_tokens": 657,
-        "total_tokens": 37764
+        "total_tokens": 37764,
+        "key_role": null
       },
       {
         "id": 46,
@@ -2710,7 +2793,8 @@
         "usd_est": 0.013156,
         "cycle_id": 14,
         "thinking_tokens": 159,
-        "total_tokens": 7907
+        "total_tokens": 7907,
+        "key_role": null
       },
       {
         "id": 47,
@@ -2721,7 +2805,8 @@
         "usd_est": 0.013471,
         "cycle_id": 14,
         "thinking_tokens": 203,
-        "total_tokens": 7949
+        "total_tokens": 7949,
+        "key_role": null
       },
       {
         "id": 48,
@@ -2732,7 +2817,8 @@
         "usd_est": 0.040889,
         "cycle_id": 14,
         "thinking_tokens": 370,
-        "total_tokens": 25715
+        "total_tokens": 25715,
+        "key_role": null
       },
       {
         "id": 49,
@@ -2743,7 +2829,8 @@
         "usd_est": 0.06506,
         "cycle_id": 14,
         "thinking_tokens": 96,
-        "total_tokens": 42941
+        "total_tokens": 42941,
+        "key_role": null
       },
       {
         "id": 50,
@@ -2754,7 +2841,8 @@
         "usd_est": 0.068043,
         "cycle_id": 14,
         "thinking_tokens": 310,
-        "total_tokens": 44070
+        "total_tokens": 44070,
+        "key_role": null
       },
       {
         "id": 51,
@@ -2765,7 +2853,8 @@
         "usd_est": 0.069922,
         "cycle_id": 14,
         "thinking_tokens": 296,
-        "total_tokens": 44707
+        "total_tokens": 44707,
+        "key_role": null
       },
       {
         "id": 52,
@@ -2776,7 +2865,8 @@
         "usd_est": 0.068692,
         "cycle_id": 14,
         "thinking_tokens": 17,
-        "total_tokens": 44955
+        "total_tokens": 44955,
+        "key_role": null
       },
       {
         "id": 53,
@@ -2787,7 +2877,8 @@
         "usd_est": 0.072897,
         "cycle_id": 14,
         "thinking_tokens": 272,
-        "total_tokens": 45758
+        "total_tokens": 45758,
+        "key_role": null
       },
       {
         "id": 54,
@@ -2798,7 +2889,8 @@
         "usd_est": 0.013406,
         "cycle_id": 15,
         "thinking_tokens": 177,
-        "total_tokens": 7997
+        "total_tokens": 7997,
+        "key_role": null
       },
       {
         "id": 55,
@@ -2809,7 +2901,8 @@
         "usd_est": 0.012874,
         "cycle_id": 15,
         "thinking_tokens": 31,
-        "total_tokens": 8395
+        "total_tokens": 8395,
+        "key_role": null
       },
       {
         "id": 56,
@@ -2820,7 +2913,8 @@
         "usd_est": 0.039679,
         "cycle_id": 15,
         "thinking_tokens": 171,
-        "total_tokens": 25697
+        "total_tokens": 25697,
+        "key_role": null
       },
       {
         "id": 57,
@@ -2831,7 +2925,8 @@
         "usd_est": 0.047337,
         "cycle_id": 15,
         "thinking_tokens": 848,
-        "total_tokens": 27534
+        "total_tokens": 27534,
+        "key_role": null
       },
       {
         "id": 58,
@@ -2842,7 +2937,8 @@
         "usd_est": 0.041936,
         "cycle_id": 15,
         "thinking_tokens": 38,
-        "total_tokens": 27649
+        "total_tokens": 27649,
+        "key_role": null
       },
       {
         "id": 59,
@@ -2853,7 +2949,8 @@
         "usd_est": 0.046314,
         "cycle_id": 15,
         "thinking_tokens": 614,
-        "total_tokens": 28368
+        "total_tokens": 28368,
+        "key_role": null
       },
       {
         "id": 60,
@@ -2864,7 +2961,8 @@
         "usd_est": 0.046662,
         "cycle_id": 15,
         "thinking_tokens": 344,
-        "total_tokens": 29080
+        "total_tokens": 29080,
+        "key_role": null
       },
       {
         "id": 61,
@@ -2875,7 +2973,8 @@
         "usd_est": 0.04553,
         "cycle_id": 15,
         "thinking_tokens": 215,
-        "total_tokens": 29409
+        "total_tokens": 29409,
+        "key_role": null
       },
       {
         "id": 62,
@@ -2886,7 +2985,8 @@
         "usd_est": 0.050814,
         "cycle_id": 15,
         "thinking_tokens": 117,
-        "total_tokens": 31796
+        "total_tokens": 31796,
+        "key_role": null
       },
       {
         "id": 63,
@@ -2897,7 +2997,8 @@
         "usd_est": 0.012986,
         "cycle_id": 16,
         "thinking_tokens": 135,
-        "total_tokens": 8045
+        "total_tokens": 8045,
+        "key_role": null
       },
       {
         "id": 64,
@@ -2908,7 +3009,8 @@
         "usd_est": 0.012588,
         "cycle_id": 16,
         "thinking_tokens": 19,
-        "total_tokens": 8252
+        "total_tokens": 8252,
+        "key_role": null
       },
       {
         "id": 65,
@@ -2919,7 +3021,8 @@
         "usd_est": 0.039674,
         "cycle_id": 16,
         "thinking_tokens": 126,
-        "total_tokens": 25457
+        "total_tokens": 25457,
+        "key_role": null
       },
       {
         "id": 66,
@@ -2930,7 +3033,8 @@
         "usd_est": 0.03867,
         "cycle_id": 16,
         "thinking_tokens": 12,
-        "total_tokens": 25552
+        "total_tokens": 25552,
+        "key_role": null
       },
       {
         "id": 67,
@@ -2941,7 +3045,8 @@
         "usd_est": 0.039498,
         "cycle_id": 16,
         "thinking_tokens": 139,
-        "total_tokens": 25724
+        "total_tokens": 25724,
+        "key_role": null
       },
       {
         "id": 68,
@@ -2952,7 +3057,8 @@
         "usd_est": 0.013458,
         "cycle_id": 16,
         "thinking_tokens": 200,
-        "total_tokens": 8108
+        "total_tokens": 8108,
+        "key_role": null
       },
       {
         "id": 69,
@@ -2963,7 +3069,8 @@
         "usd_est": 0.038025,
         "cycle_id": 16,
         "thinking_tokens": 39,
-        "total_tokens": 25122
+        "total_tokens": 25122,
+        "key_role": null
       },
       {
         "id": 70,
@@ -2974,7 +3081,8 @@
         "usd_est": 0.039568,
         "cycle_id": 16,
         "thinking_tokens": 140,
-        "total_tokens": 25707
+        "total_tokens": 25707,
+        "key_role": null
       },
       {
         "id": 71,
@@ -2985,7 +3093,8 @@
         "usd_est": 0.047801,
         "cycle_id": 16,
         "thinking_tokens": 677,
-        "total_tokens": 29107
+        "total_tokens": 29107,
+        "key_role": null
       },
       {
         "id": 72,
@@ -2996,7 +3105,8 @@
         "usd_est": 0.049053,
         "cycle_id": 16,
         "thinking_tokens": 635,
-        "total_tokens": 30030
+        "total_tokens": 30030,
+        "key_role": null
       },
       {
         "id": 73,
@@ -3007,7 +3117,8 @@
         "usd_est": 0.052485,
         "cycle_id": 16,
         "thinking_tokens": 442,
-        "total_tokens": 32466
+        "total_tokens": 32466,
+        "key_role": null
       },
       {
         "id": 74,
@@ -3018,7 +3129,8 @@
         "usd_est": 0.051643,
         "cycle_id": 16,
         "thinking_tokens": 14,
-        "total_tokens": 32889
+        "total_tokens": 32889,
+        "key_role": null
       },
       {
         "id": 75,
@@ -3029,7 +3141,8 @@
         "usd_est": 0.055095,
         "cycle_id": 16,
         "thinking_tokens": 407,
-        "total_tokens": 33754
+        "total_tokens": 33754,
+        "key_role": null
       }
     ],
     "objectives": [
@@ -3146,6 +3259,14 @@
         "blocking": 0,
         "answer": "Fixed 2026-08-06. The autoPr field was added to runner/jules.py the previous evening to stop finished Jules sessions stranding as unsubmitted patches, but it is not a field this API accepts \u2014 autoPr, autoPR, auto_pr, automaticPullRequest and createPullRequest are all rejected as unknown names, so the whole request 400'd. Removed. Stranding cannot be solved from the API (there is no submit endpoint either); a completed session with no PR needs a human to click Publish, and jules_task_status now says so.",
         "answered_at": "2026-08-06 20:48:28"
+      },
+      {
+        "id": 6,
+        "at": "2026-08-07 12:15:59",
+        "question": "Future improvement, not urgent: switch GitHub Pages from legacy branch-deploy to a GitHub Actions build-and-deploy workflow. Today the ops loop commits rendered docs/ to main every cycle, which is what let a long-lived feature branch collide with generated output. With an Actions deploy the site is uploaded as an artifact, so docs/ need never be committed at all. The catch: the site is rendered from ledger.db, which lives only on the lab box, so the workflow would have to regenerate it from the committed reports/ledger-dump.json instead \u2014 publish_log.py currently reads sqlite, not the JSON dump. Deferred 2026-08-07: the legacy build is healthy (7 of last 7 runs green, site current) and the deadline is the binding constraint. Operator's idea.",
+        "blocking": 0,
+        "answer": null,
+        "answered_at": null
       }
     ],
     "outbound": [],

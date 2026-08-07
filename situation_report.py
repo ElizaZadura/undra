@@ -148,10 +148,15 @@ CREATE TABLE IF NOT EXISTS spend (
 -- appear in neither promptTokenCount nor candidatesTokenCount: a 7-in/1-out call
 -- measured 109 total. Logging only input+output undercounts the cap ~12x.
 -- total_tokens is what the API actually billed; keep it as the source of truth.
+-- key_role records WHICH key paid for the call: "ops" (free tier), "planning"
+-- or "app" (both paid). Recorded rather than inferred, because the free tier's
+-- real ceiling is a moving target — Google changes it without notice and the
+-- docs do not state it — and inferring the boundary from fallback event
+-- timestamps breaks the moment a cycle straddles midnight or a fallback fails.
 CREATE TABLE IF NOT EXISTS llm_usage (
   id INTEGER PRIMARY KEY, at TEXT NOT NULL, model TEXT NOT NULL,
   input_tokens INTEGER, output_tokens INTEGER, thinking_tokens INTEGER,
-  total_tokens INTEGER, usd_est REAL, cycle_id INTEGER);
+  total_tokens INTEGER, usd_est REAL, cycle_id INTEGER, key_role TEXT);
 
 CREATE TABLE IF NOT EXISTS objectives (
   id INTEGER PRIMARY KEY, priority INTEGER NOT NULL, title TEXT NOT NULL,

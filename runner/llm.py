@@ -171,6 +171,7 @@ class Usage:
     usd_est: float
     priced_by_guess: bool
     cached_tokens: int = 0
+    key_role: str = ""
 
     @classmethod
     def from_metadata(cls, model: str, md: Any) -> "Usage":
@@ -217,12 +218,14 @@ class Gemini:
     site (AGENTS.md #9).
     """
 
-    def __init__(self, api_key: str, *, on_usage: Callable[[Usage], None] | None = None,
+    def __init__(self, api_key: str, *, role: str = "",
+                 on_usage: Callable[[Usage], None] | None = None,
                  on_event: Callable[[str, str], None] | None = None,
                  max_attempts: int = 5):
         from google import genai  # imported here so the module can be unit-tested
         self._genai = genai
         self.client = genai.Client(api_key=api_key)
+        self.role = role
         self.on_usage = on_usage
         self.on_event = on_event
         self.max_attempts = max_attempts
@@ -280,6 +283,7 @@ class Gemini:
                     continue
 
             usage = Usage.from_metadata(model, getattr(resp, "usage_metadata", None))
+            usage.key_role = self.role
             if usage.priced_by_guess and model not in _warned_unpriced:
                 # Once per model per process. The warning matters, but repeating
                 # it on every call buries the events that only happen once.

@@ -109,16 +109,16 @@ class Ledger:
 
     def llm_usage(self, *, model: str, input_tokens: int, output_tokens: int,
                   thinking_tokens: int, total_tokens: int, usd_est: float,
-                  cycle_id: int | None) -> None:
+                  cycle_id: int | None, key_role: str = "") -> None:
         """This table IS the spend cap — the Gemini API has no hard billing cap.
         total_tokens is what was billed; input+output alone undercounts badly
         because Gemini 3.x reasoning tokens appear in neither."""
         self.con.execute(
             "INSERT INTO llm_usage(at, model, input_tokens, output_tokens, "
-            "thinking_tokens, total_tokens, usd_est, cycle_id) "
-            "VALUES(?,?,?,?,?,?,?,?)",
+            "thinking_tokens, total_tokens, usd_est, cycle_id, key_role) "
+            "VALUES(?,?,?,?,?,?,?,?,?)",
             (utcnow(), model, input_tokens, output_tokens, thinking_tokens,
-             total_tokens, usd_est, cycle_id))
+             total_tokens, usd_est, cycle_id, key_role))
         self.con.commit()
 
     def spend_total_usd(self) -> float:

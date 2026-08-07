@@ -72,5 +72,11 @@ steps:
       - --memory=512Mi
       - --min-instances=0              # scale to zero; this is a demo, not a service under load
       - --max-instances=3              # a ceiling, so a loop cannot run up a bill
-      - --set-env-vars=GOOGLE_GENAI_USE_VERTEXAI=FALSE
+      # UNDRA_APP_MODEL is set here so a fresh deploy is not born broken. The
+      # app defaulted to gemini-2.5-flash, which returns
+      # "no longer available to new users" — the deployed service answered every
+      # permitted question with an error while the refusal path looked fine, so
+      # the failure was invisible to anyone who only tested a refusal.
+      # Keep this in step with models.work in invariants.toml.
+      - --set-env-vars=GOOGLE_GENAI_USE_VERTEXAI=FALSE,UNDRA_APP_MODEL=gemini-3.6-flash
       - --set-secrets=GOOGLE_API_KEY=undra-gemini-key:latest

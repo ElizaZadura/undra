@@ -16,6 +16,11 @@
 # Substitutions can be overridden:
 #   --substitutions=_REGION=europe-north1,_SERVICE=undra
 
+# BUILD_ID rather than SHORT_SHA. SHORT_SHA is only populated when Cloud Build is
+# triggered from a commit; `gcloud builds submit` from a directory has no commit
+# context, so it expands to nothing and the image tag becomes a bare colon —
+# "invalid image name ... could not parse reference". BUILD_ID is always set.
+
 substitutions:
   _SERVICE: undra
   _REGION: europe-north1        # Finland — closest region to Lund
@@ -25,7 +30,7 @@ options:
   logging: CLOUD_LOGGING_ONLY
 
 images:
-  - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${SHORT_SHA}"
+  - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${BUILD_ID}"
 
 steps:
   - id: build
@@ -35,7 +40,7 @@ steps:
       - -f
       - app/Dockerfile
       - -t
-      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${SHORT_SHA}"
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${BUILD_ID}"
       - -t
       - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:latest"
       - .
@@ -58,7 +63,7 @@ steps:
       - run
       - deploy
       - "${_SERVICE}"
-      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${SHORT_SHA}
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${BUILD_ID}
       - --region=${_REGION}
       - --platform=managed
       - --allow-unauthenticated        # judges and users must reach it without a login

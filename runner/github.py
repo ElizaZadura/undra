@@ -140,6 +140,50 @@ class GitHub:
 
     # -- write --------------------------------------------------------------- #
 
+    def create_branch_with_files(self, *, branch: str, base: str,
+                                 files: dict[str, str], message: str) -> str:
+        """Create a branch carrying `files`, as one commit. Returns the new sha.
+
+        Used to land work a Jules session finished but never published. Writes
+        only to a NEW branch — it refuses to touch one that already exists, so
+        it cannot overwrite anything, and `base` is read rather than assumed.
+        The result still has to pass CI and be reviewed before it can reach the
+        default branch.
+        """
+        try:
+            self._call("GET", f"git/ref/heads/{urllib.parse.quote(branch)}")
+            raise GitHubError(
+                f"branch {branch!r} already exists; refusing to write to it. "
+                "Choose a new name rather than overwriting work.")
+        except GitHubError as exc:
+            if "already exists" in str(exc):
+                raise
+            pass  # 404 is what we want
+
+        base_sha = self._call(
+            "GET", f"git/ref/heads/{urllib.parse.quote(base)}")["object"]["sha"]
+        base_tree = self._call("GET", f"git/commits/{base_sha}")["tree"]["sha"]
+
+        tree = []
+        for path, content in files.items():
+            blob = self._call("POST", "git/blobs",
+                              {"content": content, "encoding": "utf-8"})
+            tree.append({"path": path, "mode": "100644", "type": "blob",
+                         "sha": blob["sha"]})
+        new_tree = self._call("POST", "git/trees",
+                              {"base_tree": base_tree, "tree": tree})
+        commit = self._call("POST", "git/commits",
+                            {"message": message, "tree": new_tree["sha"],
+                             "parents": [base_sha]})
+        self._call("POST", "git/refs",
+                   {"ref": f"refs/heads/{branch}", "sha": commit["sha"]})
+        return commit["sha"]
+
+    def open_pull_request(self, *, title: str, head: str, base: str,
+                          body: str) -> dict:
+        return self._call("POST", "pulls",
+                          {"title": title, "head": head, "base": base, "body": body})
+
     def comment(self, number: int, body: str) -> dict:
         """Issue-level comment. CHARTER.md §2.4: anything a human reads must
         disclose that it came from software."""

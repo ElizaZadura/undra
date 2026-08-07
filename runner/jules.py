@@ -100,6 +100,28 @@ class Jules:
         return self._request("GET", f"sessions/{session_id}/activities"
                              ).get("activities", [])
 
+    def patch(self, session_id: str) -> tuple[str, list[str]]:
+        """The unified diff a completed session produced, and the files it touches.
+
+        Jules leaves finished work here when nobody publishes it. There is no
+        submit endpoint — probed 2026-08-07 with an invalid body so a live route
+        would reject at validation rather than execute: submit, publish,
+        publishBranch, createPullRequest, createPr, submitChanges, pushBranch,
+        complete and finalize all 404. Publishing from the web UI is the only
+        route Jules offers, so the patch has to be lifted out and applied here.
+        """
+        session = self.session(session_id)
+        for out in session.get("outputs") or []:
+            diff = (out.get("changeSet", {}).get("gitPatch", {})
+                       .get("unidiffPatch", ""))
+            if diff:
+                files = [l.split(" b/", 1)[-1] for l in diff.splitlines()
+                         if l.startswith("diff --git")]
+                return diff, files
+        raise JulesError(
+            f"session {session_id} has no patch — it may still be running, or "
+            "may have finished without changing anything")
+
     def approve_plan(self, session_id: str) -> dict:
         """Release a session that is waiting on plan approval.
 

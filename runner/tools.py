@@ -28,6 +28,7 @@ import urllib.error
 import urllib.parse
 import urllib.request
 from dataclasses import dataclass
+from pathlib import Path
 from datetime import datetime, timedelta, timezone
 from typing import Any, Callable
 
@@ -431,6 +432,87 @@ def t_jules_file_task(ctx: ToolContext, *, title: str, prompt: str,
     }
 
 
+def t_jules_land_task(ctx: ToolContext, *, session_id: str, title: str = "") -> dict:
+    """Open a pull request from a finished session that Jules never published.
+
+    Jules leaves completed work as a patch attached to the session when nobody
+    clicks Publish in its web interface, and exposes no endpoint to submit it —
+    every candidate route 404s. Two sessions stranded that way before this
+    existed, and the second sat for hours while the loop had no way to notice.
+
+    This lifts the patch out, applies it to a fresh branch off the default
+    branch, and opens a pull request. It writes only to a NEW branch and only
+    the files the patch touches. Nothing reaches the default branch here: CI has
+    to pass and the diff has to be reviewed, exactly as for any other PR.
+    """
+    import subprocess, tempfile  # noqa: E401 — local, only this tool needs them
+
+    try:
+        diff, files = ctx.jules().patch(session_id)
+    except Exception as exc:  # noqa: BLE001
+        raise ToolError(str(exc)) from None
+    if not files:
+        raise ToolError(f"session {session_id} produced a patch touching no files")
+
+    gh = ctx.github()
+    base = "main"
+
+    # Seed a scratch tree with the base version of every file the patch touches,
+    # then let git apply do the work. Hand-parsing a unified diff is a reliable
+    # way to introduce subtle corruption.
+    with tempfile.TemporaryDirectory() as tmp:
+        root = Path(tmp)
+        for path in files:
+            dest = root / path
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            try:
+                dest.write_text(gh.file(path, base), encoding="utf-8")
+            except Exception:  # noqa: BLE001 — absent at base means the patch adds it
+                pass
+        (root / "_patch.diff").write_text(diff, encoding="utf-8")
+        subprocess.run(["git", "init", "-q"], cwd=root, check=True, timeout=30)
+        proc = subprocess.run(
+            ["git", "apply", "--whitespace=nowarn", "_patch.diff"],
+            cwd=root, capture_output=True, text=True, timeout=60)
+        if proc.returncode != 0:
+            raise ToolError(
+                f"the patch from session {session_id} does not apply to {base}: "
+                f"{proc.stderr.strip()[:300]}. The base has probably moved since "
+                "the session ran. Re-file the task against current main rather "
+                "than trying to force this one in.")
+        contents = {p: (root / p).read_text(encoding="utf-8")
+                    for p in files if (root / p).exists()}
+
+    if not contents:
+        raise ToolError("the patch applied but produced no readable files")
+
+    branch = f"jules-land-{session_id[:12]}"
+    session_title = title or ctx.jules().session(session_id).get("title") or "Jules task"
+    key = _payload_key("JULES_LAND", f"{session_id}|{branch}")
+
+    with ctx.ledger.action(kind="JULES_LAND", target=f"{branch}",
+                           idempotency_key=key, cycle_id=ctx.cycle.id):
+        gh.create_branch_with_files(
+            branch=branch, base=base, files=contents,
+            message=f"{session_title}\n\nLanded from Jules session {session_id}, "
+                    f"which finished without publishing a branch.")
+        pr = gh.open_pull_request(
+            title=session_title, head=branch, base=base,
+            body=(f"Opened from Jules session `{session_id}`, which completed but "
+                  f"never published a branch — Jules exposes no endpoint to submit "
+                  f"finished work, so the patch was lifted from the session and "
+                  f"applied to a fresh branch off `{base}`.\n\n"
+                  f"Files changed: {', '.join(files)}\n\n"
+                  f"Reviewed by nobody yet. CI must pass and the diff must be read "
+                  f"before this merges.\n\n"
+                  f"*Automated by the undra agent system.*"))
+
+    ctx.cycle.note_productive()
+    return {"pr": pr.get("number"), "branch": branch, "files": files,
+            "url": pr.get("html_url"),
+            "note": "Opened, not merged. Read the diff and check CI before merging."}
+
+
 def t_jules_task_status(ctx: ToolContext, *, session_id: str) -> dict:
     """Check a filed build task. Read-only.
 
@@ -669,6 +751,7 @@ TOOL_IMPLS: dict[str, Callable[..., dict]] = {
     "fetch_url": t_fetch_url,
     "jules_file_task": t_jules_file_task,
     "jules_task_status": t_jules_task_status,
+    "jules_land_task": t_jules_land_task,
     "jules_list_tasks": t_jules_list_tasks,
     "finish_cycle": t_finish_cycle,
 }
@@ -791,6 +874,20 @@ def declarations() -> list[dict]:
                                          "touch. Jules cannot ask you questions.")},
               "branch": {"type": "string", "description": "Starting branch. Default main."},
           }, "required": ["title", "prompt"]}),
+
+        S(name="jules_land_task",
+          description=("Open a pull request from a finished Jules session that "
+                       "never published a branch. Jules leaves completed work as "
+                       "a patch when nobody clicks Publish in its web interface, "
+                       "and offers no way to submit it. Use this when "
+                       "jules_task_status shows a session finished with no pull "
+                       "request. Opens a PR only — CI must pass and the diff must "
+                       "be read before it merges."),
+          parameters={"type": "object", "properties": {
+              "session_id": {"type": "string"},
+              "title": {"type": "string",
+                        "description": "PR title. Defaults to the session's title."},
+          }, "required": ["session_id"]}),
 
         S(name="jules_task_status",
           description="Check a task you filed earlier. Read-only.",

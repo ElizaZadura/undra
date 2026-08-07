@@ -200,6 +200,12 @@ async def chat(
 
         raw_text = response.text or ""
 
+        # Run post-generation guardrails on the response text from Gemini
+        post_guardrail_result = check_query_guardrails(raw_text)
+        if post_guardrail_result:
+            logger.info(f"Post-generation guardrail triggered for category: {post_guardrail_result['category']}")
+            return post_guardrail_result
+
         # 7. EU AI Act Article 50 & Transparency Disclosures:
         # Ensure that every single AI-generated response has a highly visible disclosure.
         disclosure_tag = "🤖 [AI-Generated Response by Undra Assistant]"

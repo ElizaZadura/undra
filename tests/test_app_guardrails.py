@@ -145,3 +145,109 @@ class TestAppGuardrails(unittest.TestCase):
     def test_chat_endpoint_empty_input_fails(self):
         response = self.client.post("/api/chat", data={})
         self.assertEqual(response.status_code, 400)
+
+    @patch("app.main.get_gemini_client")
+    def test_chat_endpoint_image_only_refusal_immigration(self, mock_get_client):
+        # Image-only request (no text message), but Gemini returns text containing restricted content
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.text = "This document appears to be a residence permit or visa letter from Migrationsverket."
+        mock_client.models.generate_content.return_value = mock_response
+        mock_get_client.return_value = mock_client
+
+        # Create a tiny dummy image
+        import io
+        from PIL import Image
+        img = Image.new('RGB', (10, 10), color='red')
+        img_byte_arr = io.BytesIO()
+        img.save(img_byte_arr, format='JPEG')
+        img_byte_arr.seek(0)
+
+        response = self.client.post(
+            "/api/chat",
+            data={},
+            files={"image": ("test_letter.jpg", img_byte_arr, "image/jpeg")}
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["refused"])
+        self.assertEqual(data["category"], "immigration")
+        self.assertIn("Migrationsverket", data["authority"])
+
+    @patch("app.main.get_gemini_client")
+    def test_chat_endpoint_image_only_refusal_tax(self, mock_get_client):
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.text = "This looks like a letter from Skatteverket with your personnummer."
+        mock_client.models.generate_content.return_value = mock_response
+        mock_get_client.return_value = mock_client
+
+        import io
+        from PIL import Image
+        img = Image.new('RGB', (10, 10), color='blue')
+        img_byte_arr = io.BytesIO()
+        img.save(img_byte_arr, format='JPEG')
+        img_byte_arr.seek(0)
+
+        response = self.client.post(
+            "/api/chat",
+            data={},
+            files={"image": ("test_letter.jpg", img_byte_arr, "image/jpeg")}
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["refused"])
+        self.assertEqual(data["category"], "tax")
+        self.assertIn("Skatteverket", data["authority"])
+
+    @patch("app.main.get_gemini_client")
+    def test_chat_endpoint_image_only_refusal_legal(self, mock_get_client):
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.text = "This contract seems to have a tenancy dispute with your landlord."
+        mock_client.models.generate_content.return_value = mock_response
+        mock_get_client.return_value = mock_client
+
+        import io
+        from PIL import Image
+        img = Image.new('RGB', (10, 10), color='green')
+        img_byte_arr = io.BytesIO()
+        img.save(img_byte_arr, format='JPEG')
+        img_byte_arr.seek(0)
+
+        response = self.client.post(
+            "/api/chat",
+            data={},
+            files={"image": ("contract.jpg", img_byte_arr, "image/jpeg")}
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["refused"])
+        self.assertEqual(data["category"], "legal")
+        self.assertIn("AF Bostäder", data["authority"])
+
+    @patch("app.main.get_gemini_client")
+    def test_chat_endpoint_image_only_refusal_medical(self, mock_get_client):
+        mock_client = MagicMock()
+        mock_response = MagicMock()
+        mock_response.text = "This picture shows severe symptoms that require calling 1177 or visiting a doctor."
+        mock_client.models.generate_content.return_value = mock_response
+        mock_get_client.return_value = mock_client
+
+        import io
+        from PIL import Image
+        img = Image.new('RGB', (10, 10), color='yellow')
+        img_byte_arr = io.BytesIO()
+        img.save(img_byte_arr, format='JPEG')
+        img_byte_arr.seek(0)
+
+        response = self.client.post(
+            "/api/chat",
+            data={},
+            files={"image": ("symptoms.jpg", img_byte_arr, "image/jpeg")}
+        )
+        self.assertEqual(response.status_code, 200)
+        data = response.json()
+        self.assertTrue(data["refused"])
+        self.assertEqual(data["category"], "medical_safety")
+        self.assertIn("1177", data["authority"])

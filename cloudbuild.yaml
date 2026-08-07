@@ -10,7 +10,7 @@
 #
 # Run it from Cloud Shell, which is already authenticated:
 #
-#   gcloud config set project undra
+#   gcloud config set project undra-504613
 #   gcloud builds submit --config cloudbuild.yaml
 #
 # Substitutions can be overridden:

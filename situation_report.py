@@ -481,7 +481,8 @@ def collect_deploy(rep: Report, con, cfg: dict) -> None:
         rep.add(Fact("deploy_health", None, UNKNOWN, "config",
                      "no host configured yet — nothing is deployed"))
         return
-    url = os.environ.get("HEALTHCHECK_URL") or f"https://{hosts[0]}/healthz"
+    path = cfg.get("scope", {}).get("health_path", "/healthz")
+    url = os.environ.get("HEALTHCHECK_URL") or f"https://{hosts[0]}{path}"
     healthy = False
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "situation-report/1"})

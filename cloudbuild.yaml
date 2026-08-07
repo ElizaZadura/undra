@@ -1,0 +1,71 @@
+# Build and deploy the product to Cloud Run.
+#
+# This file exists because the repository has two Dockerfiles: the one at the
+# root builds the OPERATOR container that runs on the lab box, and app/Dockerfile
+# builds the product. `gcloud run deploy --source .` picks the root one and would
+# cheerfully deploy the agent runner as a web service.
+#
+# The build context is the repository root, because app/Dockerfile copies from
+# app/ — building with app/ as the context would not find its own files.
+#
+# Run it from Cloud Shell, which is already authenticated:
+#
+#   gcloud config set project undra
+#   gcloud builds submit --config cloudbuild.yaml
+#
+# Substitutions can be overridden:
+#   --substitutions=_REGION=europe-north1,_SERVICE=undra
+
+substitutions:
+  _SERVICE: undra
+  _REGION: europe-north1        # Finland — closest region to Lund
+  _REPO: undra
+
+options:
+  logging: CLOUD_LOGGING_ONLY
+
+images:
+  - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${SHORT_SHA}"
+
+steps:
+  - id: build
+    name: gcr.io/cloud-builders/docker
+    args:
+      - build
+      - -f
+      - app/Dockerfile
+      - -t
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${SHORT_SHA}"
+      - -t
+      - "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:latest"
+      - .
+
+  - id: push
+    name: gcr.io/cloud-builders/docker
+    args: ["push", "--all-tags",
+           "${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}"]
+
+  # The Gemini key is read from Secret Manager at runtime, never baked into the
+  # image and never set as a plain environment variable — a value set with
+  # --set-env-vars is visible to anyone who can run `gcloud run services
+  # describe`. invariants.toml pins user_data_key = "paid", and CHARTER.md §3.4
+  # is why: free-tier prompts may be used for training and users photograph
+  # letters carrying their name, address and personnummer.
+  - id: deploy
+    name: gcr.io/google.com/cloudsdktool/cloud-sdk
+    entrypoint: gcloud
+    args:
+      - run
+      - deploy
+      - "${_SERVICE}"
+      - --image=${_REGION}-docker.pkg.dev/${PROJECT_ID}/${_REPO}/${_SERVICE}:${SHORT_SHA}
+      - --region=${_REGION}
+      - --platform=managed
+      - --allow-unauthenticated        # judges and users must reach it without a login
+      - --port=8080
+      - --cpu=1
+      - --memory=512Mi
+      - --min-instances=0              # scale to zero; this is a demo, not a service under load
+      - --max-instances=3              # a ceiling, so a loop cannot run up a bill
+      - --set-env-vars=GOOGLE_GENAI_USE_VERTEXAI=FALSE
+      - --set-secrets=GOOGLE_API_KEY=undra-gemini-key:latest

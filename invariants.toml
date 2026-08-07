@@ -98,6 +98,10 @@ LEGAL_OR_MEDICAL_CLAIM = "halt"          # should never fire; if it does, stop e
 # Anything not listed here is out of bounds. See CHARTER.md §3.10.
 allowed_repos    = ["ElizaZadura/undra"]
 allowed_hosts    = ["FILL_ME.run.app"]
+# Path the watchdog polls to decide deploy_health. The app serves /api/health,
+# not /healthz — a mismatch here reports a healthy deployment as down and
+# eventually halts the loop over nothing.
+health_path      = "/api/health"
 allowed_domains  = ["undra.nu"]
 ledger_path      = "./ledger.db"
 approval_channel = "telegram"

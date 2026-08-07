@@ -1,0 +1,151 @@
+# Deploying the product to Cloud Run
+
+The first deploy needs a human. Creating the service, enabling APIs and granting
+IAM are login-gated console actions — the `LOGIN` class `CHARTER.md` §4 puts
+behind the Operator — and Coral has no shell and no `gcloud`. After this, deploys
+can be automated (see the last section).
+
+Everything below runs in **Cloud Shell**, which is already authenticated and
+needs nothing installed locally. Open it from the Cloud console, top right.
+
+Roughly ten minutes.
+
+---
+
+## 0. Which project
+
+`undra`, not `undra-free`. The product handles user data and must use the paid
+key — `invariants.toml` pins `user_data_key = "paid"` and `CHARTER.md` §3.4 is
+why: free-tier prompts may be used for training, and users photograph letters
+carrying their name, address and personnummer.
+
+```bash
+gcloud config set project undra
+```
+
+---
+
+## 1. Turn on what the build needs
+
+```bash
+gcloud services enable \
+  run.googleapis.com \
+  cloudbuild.googleapis.com \
+  artifactregistry.googleapis.com \
+  secretmanager.googleapis.com
+```
+
+Covered by the trial credit on `My Billing Account`. The Gemini API is not — that
+bills against the prepaid balance separately, as `HANDOFF.md` §4 records.
+
+---
+
+## 2. Somewhere to put the image
+
+```bash
+gcloud artifacts repositories create undra \
+  --repository-format=docker \
+  --location=europe-north1 \
+  --description="undra product images"
+```
+
+`europe-north1` is Finland, the closest region to Lund. If you change it, change
+`_REGION` in `cloudbuild.yaml` to match.
+
+---
+
+## 3. The Gemini key, in Secret Manager rather than an env var
+
+A value passed with `--set-env-vars` is readable by anyone who can run
+`gcloud run services describe`. Secret Manager keeps it out of the service
+description and out of the build logs.
+
+```bash
+# paste the PAID key when prompted, then press Ctrl-D
+gcloud secrets create undra-gemini-key --replication-policy=automatic --data-file=-
+```
+
+Then let the runtime service account read it:
+
+```bash
+PROJECT_NUMBER=$(gcloud projects describe undra --format='value(projectNumber)')
+gcloud secrets add-iam-policy-binding undra-gemini-key \
+  --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
+  --role=roles/secretmanager.secretAccessor
+```
+
+And let Cloud Build deploy to Cloud Run:
+
+```bash
+gcloud projects add-iam-policy-binding undra \
+  --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
+  --role=roles/run.admin
+gcloud projects add-iam-policy-binding undra \
+  --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
+  --role=roles/iam.serviceAccountUser
+```
+
+---
+
+## 4. Build and deploy
+
+```bash
+git clone https://github.com/ElizaZadura/undra.git && cd undra
+gcloud builds submit --config cloudbuild.yaml
+```
+
+`cloudbuild.yaml` exists because this repository has **two** Dockerfiles. The one
+at the root builds the operator container that runs on the lab box;
+`app/Dockerfile` builds the product. A bare `gcloud run deploy --source .` picks
+the root one and deploys the agent runner as a web service, which is not what
+anybody wants.
+
+---
+
+## 5. Tell the watchdog where it lives
+
+The deploy prints a URL like `https://undra-xxxxxxxx-lz.a.run.app`. Put the host
+— no scheme, no trailing slash — into `invariants.toml`:
+
+```toml
+allowed_hosts    = ["undra-xxxxxxxx-lz.a.run.app"]
+health_path      = "/api/health"
+```
+
+Until this is set, `situation_report.py` reports `deploy_health: UNKNOWN` with
+"no host configured yet — nothing is deployed", which is honest but means the
+loop cannot tell whether the product is up.
+
+Check it yourself first:
+
+```bash
+curl -s https://<host>/api/health
+```
+
+`health_path` is `/api/health` because that is what the app serves. It was
+`/healthz` until 2026-08-07, which would have reported a perfectly healthy
+deployment as down and eventually halted the loop over nothing.
+
+---
+
+## 6. Then commit and let a cycle pick it up
+
+```bash
+git add invariants.toml && git commit -m "Point the watchdog at the deployed service"
+git push
+```
+
+The next cycle reads `allowed_hosts`, polls the health endpoint, and starts
+recording `deploy_health` in every situation report.
+
+---
+
+## Afterwards: automatic deploys
+
+Once the above works by hand once, a GitHub Actions workflow can run the same
+`gcloud builds submit` on every push to `main`, so Coral's merges deploy
+themselves. That needs a way for Actions to authenticate to GCP — Workload
+Identity Federation is the version that involves no key file. Worth doing after
+the first manual deploy proves the pipeline, not before: debugging a build and
+debugging federated auth at the same time is twice the work and half the
+information.

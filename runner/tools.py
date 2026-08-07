@@ -50,12 +50,38 @@ INJECTION_MARKERS = (
 )
 
 
+# Jules free tier is 15 tasks/day (HANDOFF.md §4). Hitting the ceiling means the
+# build loop is thrashing, not that the tier is too small — so this refuses
+# rather than queues, and says why. Distinct from max_repeated_action_failures,
+# which counts failures; this counts successful filings.
+JULES_DAILY_LIMIT = 15
+
+
 @dataclass
 class ToolContext:
     cfg: Any
     ledger: Ledger
     cycle: CycleRecorder
     telegram: Any | None = None
+    _jules: Any = None
+
+    _github: Any = None
+
+    def jules(self):
+        """Lazily constructed: a cycle that never files a build task should not
+        fail because JULES_API_KEY is absent."""
+        if self._jules is None:
+            from .jules import Jules
+            self._jules = Jules()
+        return self._jules
+
+    def github(self):
+        if self._github is None:
+            from .github import GitHub
+            if not self.cfg.allowed_repos:
+                raise ToolError("no repository in invariants.toml allowed_repos")
+            self._github = GitHub(self.cfg.allowed_repos[0])
+        return self._github
 
 
 class ToolError(RuntimeError):
@@ -114,7 +140,13 @@ def check_gate(ctx: ToolContext, kind: str, payload: str,
             ctx.telegram.request_approval(request_id=rid, kind=kind, payload=payload,
                                           deadline=deadline,
                                           default_action=default_action)
+            ctx.ledger.con.execute(
+                "UPDATE human_requests SET notified_at=datetime('now') WHERE id=?",
+                (rid,))
+            ctx.ledger.con.commit()
         except Exception as exc:  # noqa: BLE001
+            # Left with notified_at NULL on purpose: deliver_pending() retries it
+            # next cycle rather than leaving it silently unasked.
             ctx.ledger.event("error", "telegram",
                              f"could not deliver approval request #{rid}: {exc}")
     ctx.cycle.note_blocked()
@@ -200,6 +232,10 @@ def t_request_human(ctx: ToolContext, *, kind: str, payload: str,
             ctx.telegram.request_approval(request_id=rid, kind=kind, payload=payload,
                                           deadline=deadline,
                                           default_action=default_action)
+            ctx.ledger.con.execute(
+                "UPDATE human_requests SET notified_at=datetime('now') WHERE id=?",
+                (rid,))
+            ctx.ledger.con.commit()
         except Exception as exc:  # noqa: BLE001
             ctx.ledger.event("error", "telegram", f"request #{rid} undelivered: {exc}")
     return {"request_id": rid, "on_timeout": default_action,
@@ -267,12 +303,297 @@ def t_finish_cycle(ctx: ToolContext, *, handoff: str,
     return {"status": "cycle_will_end", "handoff_recorded": True}
 
 
+def t_jules_file_task(ctx: ToolContext, *, title: str, prompt: str,
+                      branch: str = "main", repo: str = "") -> dict:
+    """File a build task with Jules. CHARTER.md §5 standing latitude — this is
+    ordinary work inside the assigned repository and needs no approval token.
+
+    Idempotent on (title, prompt): re-filing the same task in a later cycle is
+    refused rather than duplicated, because a stateless agent re-reading the same
+    objective list will otherwise file it again every four hours.
+    """
+    repo = repo or (ctx.cfg.allowed_repos[0] if ctx.cfg.allowed_repos else "")
+    if not repo:
+        raise ToolError("no repository configured in invariants.toml allowed_repos")
+    if repo not in ctx.cfg.allowed_repos:
+        ctx.ledger.event("warn", "scope", f"refused Jules task against {repo}")
+        raise ToolError(
+            f"{repo} is not in allowed_repos. Anything not listed there is out "
+            "of bounds (CHARTER.md §8.3).")
+    if not prompt.strip():
+        raise ToolError("prompt is required: describe the change you want made")
+
+    day_ago = (datetime.now(timezone.utc) - timedelta(days=1)).isoformat()
+    filed = ctx.ledger.con.execute(
+        "SELECT COUNT(*) FROM actions WHERE kind='JULES_SESSION' "
+        "AND status='ok' AND at > ?", (day_ago,)).fetchone()[0]
+    if filed >= JULES_DAILY_LIMIT:
+        return {"error": f"Jules daily budget spent ({filed}/{JULES_DAILY_LIMIT}). "
+                         "Hitting this ceiling means the build loop is thrashing, "
+                         "not that the tier is too small. Review what has already "
+                         "been filed before filing more.",
+                "filed_today": filed}
+
+    from .jules import needs_plan_approval
+    plan_approval = needs_plan_approval(prompt, title)
+    key = _payload_key("JULES_SESSION", f"{repo}|{title}|{prompt}")
+
+    with ctx.ledger.action(kind="JULES_SESSION", target=f"{repo}:{title}",
+                           idempotency_key=key, cycle_id=ctx.cycle.id):
+        session = ctx.jules().create_session(
+            repo=repo, prompt=prompt, title=title, branch=branch,
+            require_plan_approval=plan_approval, ledger=ctx.ledger)
+
+    ctx.cycle.note_productive()
+    return {
+        "session_id": session.id,
+        "requires_plan_approval": plan_approval,
+        "filed_today": filed + 1,
+        "daily_limit": JULES_DAILY_LIMIT,
+        "note": ("Filed. Do not wait for it — Jules works asynchronously and a "
+                 "later cycle will see the result. Check with jules_task_status."
+                 + (" This task touches payments, auth or user data, so it needs "
+                    "plan approval before Jules will act (AGENTS.md #10)."
+                    if plan_approval else "")),
+    }
+
+
+def t_jules_task_status(ctx: ToolContext, *, session_id: str) -> dict:
+    """Check a filed build task. Read-only.
+
+    `state` alone is misleading and cost a cycle on 2026-08-06: a session whose
+    plan has been generated and is awaiting the Operator's approval reports
+    COMPLETED, which was read as "the work is finished" and led to a follow-up
+    task being filed on a false premise. The state string is therefore reported
+    alongside an explicit reading of what has actually happened.
+    """
+    try:
+        session = ctx.jules().session(session_id)
+    except Exception as exc:  # noqa: BLE001
+        raise ToolError(f"could not read session {session_id}: {exc}") from None
+
+    activities = []
+    kinds: list[str] = []
+    try:
+        raw = ctx.jules().activities(session_id)
+        for a in raw:
+            kinds.extend(k for k in a if k not in ("name", "createTime",
+                                                   "originator", "id"))
+        activities = [", ".join(k for k in a if k not in
+                                ("name", "createTime", "originator", "id"))
+                      for a in raw][-6:]
+    except Exception:  # noqa: BLE001
+        pass
+
+    state = session.get("state") or session.get("status") or "UNKNOWN"
+    plan_only = "planGenerated" in kinds and not any(
+        k in kinds for k in ("pullRequestCreated", "changesSubmitted",
+                             "codeChanged", "planApproved"))
+
+    # A session can report COMPLETED having produced only a plan, or having run
+    # and left nothing in the repository. Verified 2026-08-06: session
+    # 1652844863819652924 reported COMPLETED with planApproved, artifacts and
+    # sessionCompleted activities, and yet created no branch and no PR. The
+    # authoritative test is therefore what exists in the repo, not what the
+    # session says about itself (CHARTER.md §6.6 — name the commit).
+    produced_pr = any(k in kinds for k in ("pullRequestCreated", "changesSubmitted"))
+
+    if plan_only:
+        reading = ("PLAN ONLY — Jules produced a plan and is waiting for the "
+                   "Operator to approve it. No code has been written. Do NOT "
+                   "treat this as finished work and do NOT file follow-up tasks "
+                   "that depend on it. If it has waited a long time, that is a "
+                   "request_human, not a new task.")
+    elif state.upper() in ("COMPLETED", "FINISHED", "SUCCEEDED") and not produced_pr:
+        reading = ("Jules reports this session finished BUT no pull request or "
+                   "submitted change is visible in its activity. Completed is not "
+                   "the same as delivered. Before depending on this or filing "
+                   "follow-up work, confirm a branch or PR exists in the "
+                   "repository; if none does, the task did not land and re-filing "
+                   "it with more specific instructions is the correct move "
+                   "(CHARTER.md §6.6).")
+    elif state.upper() in ("COMPLETED", "FINISHED", "SUCCEEDED"):
+        reading = ("Session finished and reports a submitted change. Confirm the "
+                   "pull request before treating the work as merged.")
+    else:
+        reading = f"Session state is {state}. Still in progress; do not re-file it."
+
+    return {"session_id": session_id,
+            "raw_state": state,
+            "what_this_means": reading,
+            "awaiting_plan_approval": plan_only,
+            "title": session.get("title"),
+            "url": session.get("url"),
+            "activity_kinds": sorted(set(kinds)),
+            "recent_activity": activities}
+
+
+def t_jules_list_tasks(ctx: ToolContext) -> dict:
+    """What has already been filed. Read this before filing something new —
+    a stateless agent re-reading the same objectives will otherwise duplicate."""
+    try:
+        sessions = ctx.jules().sessions()
+    except Exception as exc:  # noqa: BLE001
+        raise ToolError(f"could not list sessions: {exc}") from None
+    return {"count": len(sessions),
+            "sessions": [{"id": s.get("id") or s.get("name", "").rsplit("/", 1)[-1],
+                          "title": s.get("title"),
+                          "state": s.get("state") or s.get("status")}
+                         for s in sessions[:20]]}
+
+
+def t_list_pull_requests(ctx: ToolContext, *, state: str = "open") -> dict:
+    """What is waiting for review. Read-only."""
+    try:
+        prs = ctx.github().pulls(state)
+    except Exception as exc:  # noqa: BLE001
+        raise ToolError(f"could not list pull requests: {exc}") from None
+    return {"count": len(prs),
+            "pull_requests": [{"number": p["number"], "title": p["title"],
+                               "branch": p["head"]["ref"],
+                               "state": p["state"],
+                               "merged": p.get("merged_at") is not None,
+                               "draft": p.get("draft", False)}
+                              for p in prs]}
+
+
+def t_read_pull_request(ctx: ToolContext, *, number: int) -> dict:
+    """Read a PR: files, CI verdict, and the diff itself.
+
+    Read the diff before merging. A PR that Jules reports as finished can still
+    contain a defect that only the diff shows — the first PR in this repository
+    ran its refusal guardrail on text but not on image-only queries, which is
+    the product's headline path (CHARTER.md §3.3).
+    """
+    gh = ctx.github()
+    try:
+        pr = gh.pull(number)
+        files = gh.pull_files(number)
+        diff, truncated = gh.pull_diff(number)
+        ci = gh.checks(pr["head"]["sha"])
+    except Exception as exc:  # noqa: BLE001
+        raise ToolError(f"could not read PR #{number}: {exc}") from None
+
+    return {
+        "number": number,
+        "title": pr["title"],
+        "state": pr["state"],
+        "mergeable": pr.get("mergeable"),
+        "ci": ci,
+        "files": [{"file": f["filename"], "status": f["status"],
+                   "added": f["additions"], "removed": f["deletions"]}
+                  for f in files],
+        "diff": diff,
+        "diff_truncated": truncated,
+        "note": ("The diff is the evidence. Judge the change on what it does, "
+                 "not on what the PR title claims (CHARTER.md §6.6)."),
+    }
+
+
+def t_comment_on_pull_request(ctx: ToolContext, *, number: int, body: str) -> dict:
+    """Leave a review comment. Authorised by CHARTER.md §5 — reviewing code in
+    the assigned repository is ordinary work, not a gated PUBLISH.
+
+    A human reads this, so §2.4 applies: the comment says it came from software.
+    """
+    if not body.strip():
+        raise ToolError("comment body is required")
+    signed = (f"{body.strip()}\n\n---\n*Automated review by Coral, the operating "
+              f"agent for undra. No human wrote this comment.*")
+    key = _payload_key("PR_COMMENT", f"{number}|{body}")
+    with ctx.ledger.action(kind="PR_COMMENT", target=f"pr#{number}",
+                           idempotency_key=key, cycle_id=ctx.cycle.id):
+        ctx.github().comment(number, signed)
+    ctx.cycle.note_productive()
+    return {"status": "commented", "pr": number}
+
+
+def t_merge_pull_request(ctx: ToolContext, *, number: int,
+                         reason: str = "") -> dict:
+    """Merge a PR. CHARTER.md §5 grants this for PRs *that pass CI* — the
+    condition is machine-checkable, so it is checked here rather than trusted.
+
+    Merging is not gated, but it does change main. Read the diff first.
+    """
+    gh = ctx.github()
+    try:
+        pr = gh.pull(number)
+        ci = gh.checks(pr["head"]["sha"])
+    except Exception as exc:  # noqa: BLE001
+        raise ToolError(f"could not read PR #{number}: {exc}") from None
+
+    if pr.get("merged_at"):
+        return {"status": "already_merged", "pr": number}
+    if pr["state"] != "open":
+        raise ToolError(f"PR #{number} is {pr['state']}, not open")
+
+    if ci["verdict"] != "pass":
+        return {"error": f"CI verdict is {ci['verdict']}, not pass",
+                "ci": ci,
+                "note": ("CHARTER.md §5 authorises merging PRs *that pass CI*. "
+                         + ("No checks are configured, which is not the same as "
+                            "passing — the change has demonstrated nothing. Ask "
+                            "the Operator rather than merging on an absence of "
+                            "evidence." if ci["verdict"] == "none" else
+                            "Fix the failure or wait, and do not merge around "
+                            "it."))}
+
+    key = _payload_key("PR_MERGE", f"{number}|{pr['head']['sha']}")
+    with ctx.ledger.action(kind="PR_MERGE", target=f"pr#{number}",
+                           idempotency_key=key, cycle_id=ctx.cycle.id):
+        gh.merge(number, f"{pr['title']} (#{number})")
+    ctx.ledger.decision(
+        cycle_id=ctx.cycle.id,
+        summary=f"Merged pull request #{number}: {pr['title']}",
+        rationale=reason or "CI passed and the diff was reviewed.",
+        evidence=f"CI verdict pass; checks: {', '.join(ci['passed']) or 'none named'}",
+        reversible=True,
+        falsifier="If main breaks or the change does not do what the diff "
+                  "suggested, this merge was premature.")
+    ctx.cycle.note_productive()
+    return {"status": "merged", "pr": number}
+
+
+def t_list_repo_files(ctx: ToolContext, *, ref: str = "main") -> dict:
+    """What is already on a branch. Read this BEFORE commissioning work.
+
+    read_pull_request shows what a PR changes, not what the branch it targets
+    already contains — so "this file is missing" from a PR diff means missing
+    *from the PR*, which is not the same thing. Getting that wrong on
+    2026-08-06 produced a duplicate CI workflow and a merge conflict.
+    """
+    try:
+        paths = ctx.github().tree(ref)
+    except Exception as exc:  # noqa: BLE001
+        raise ToolError(f"could not list {ref}: {exc}") from None
+    return {"ref": ref, "count": len(paths), "files": sorted(paths)[:200]}
+
+
+def t_read_repo_file(ctx: ToolContext, *, path: str, ref: str = "main") -> dict:
+    """Read one file as it exists on a branch."""
+    try:
+        body = ctx.github().file(path, ref)
+    except Exception as exc:  # noqa: BLE001
+        raise ToolError(f"could not read {path} on {ref}: {exc}") from None
+    return {"path": path, "ref": ref, "truncated": len(body) > 20000,
+            "content": body[:20000]}
+
+
 TOOL_IMPLS: dict[str, Callable[..., dict]] = {
+    "list_repo_files": t_list_repo_files,
+    "read_repo_file": t_read_repo_file,
+    "list_pull_requests": t_list_pull_requests,
+    "read_pull_request": t_read_pull_request,
+    "comment_on_pull_request": t_comment_on_pull_request,
+    "merge_pull_request": t_merge_pull_request,
     "log_decision": t_log_decision,
     "add_objective": t_add_objective,
     "log_open_question": t_log_open_question,
     "request_human": t_request_human,
     "fetch_url": t_fetch_url,
+    "jules_file_task": t_jules_file_task,
+    "jules_task_status": t_jules_task_status,
+    "jules_list_tasks": t_jules_list_tasks,
     "finish_cycle": t_finish_cycle,
 }
 
@@ -337,6 +658,87 @@ def declarations() -> list[dict]:
           parameters={"type": "object", "properties": {
               "url": {"type": "string"},
           }, "required": ["url"]}),
+
+        S(name="jules_file_task",
+          description=("File a coding task with Jules, which works on the "
+                       "repository asynchronously and opens a PR. This is how "
+                       "you build things — you have no shell and no git tools, "
+                       "by design. Authorised by CHARTER.md §5; no approval "
+                       "token needed. Free tier is 15 tasks/day."),
+          parameters={"type": "object", "properties": {
+              "title": {"type": "string", "description": "Short name for the task."},
+              "prompt": {"type": "string",
+                         "description": ("What you want built or changed. Be "
+                                         "specific: name files, describe the "
+                                         "acceptance condition, say what not to "
+                                         "touch. Jules cannot ask you questions.")},
+              "branch": {"type": "string", "description": "Starting branch. Default main."},
+          }, "required": ["title", "prompt"]}),
+
+        S(name="jules_task_status",
+          description="Check a task you filed earlier. Read-only.",
+          parameters={"type": "object", "properties": {
+              "session_id": {"type": "string"},
+          }, "required": ["session_id"]}),
+
+        S(name="jules_list_tasks",
+          description=("List build tasks already filed. Check this BEFORE "
+                       "filing a new one — you have no memory of previous "
+                       "cycles and will otherwise file the same task again."),
+          parameters={"type": "object", "properties": {}}),
+
+        S(name="list_repo_files",
+          description=("Every file on a branch, main by default. Check this "
+                       "BEFORE filing build work: a PR diff shows what the PR "
+                       "changes, not what the branch already has, so 'missing "
+                       "from the diff' does not mean 'missing from the repo'."),
+          parameters={"type": "object", "properties": {
+              "ref": {"type": "string", "description": "Branch. Default main."},
+          }}),
+
+        S(name="read_repo_file",
+          description="Read one file as it exists on a branch.",
+          parameters={"type": "object", "properties": {
+              "path": {"type": "string"},
+              "ref": {"type": "string", "description": "Branch. Default main."},
+          }, "required": ["path"]}),
+
+        S(name="list_pull_requests",
+          description=("Pull requests in the repository. Jules tasks become PRs, "
+                       "so this is how you see what your build work produced."),
+          parameters={"type": "object", "properties": {
+              "state": {"type": "string", "description": "open, closed or all. Default open."},
+          }}),
+
+        S(name="read_pull_request",
+          description=("Read a PR's files, CI verdict and full diff. Do this "
+                       "BEFORE merging. A PR that Jules reports as finished can "
+                       "still contain a defect only the diff reveals."),
+          parameters={"type": "object", "properties": {
+              "number": {"type": "integer"},
+          }, "required": ["number"]}),
+
+        S(name="comment_on_pull_request",
+          description=("Leave a review comment on a PR. Ordinary work under "
+                       "CHARTER.md §5, not a gated PUBLISH. The comment is "
+                       "labelled as written by software."),
+          parameters={"type": "object", "properties": {
+              "number": {"type": "integer"},
+              "body": {"type": "string",
+                       "description": "What you found. Be specific: name the file "
+                                      "and what is wrong with it."},
+          }, "required": ["number", "body"]}),
+
+        S(name="merge_pull_request",
+          description=("Merge a PR into main. Authorised by CHARTER.md §5 only "
+                       "for PRs that pass CI, and that is checked — a repository "
+                       "with no checks configured does not count as passing. "
+                       "Read the diff first."),
+          parameters={"type": "object", "properties": {
+              "number": {"type": "integer"},
+              "reason": {"type": "string",
+                         "description": "Why this is safe to merge. Recorded as a decision."},
+          }, "required": ["number"]}),
 
         S(name="finish_cycle",
           description=("End the cycle with a written handoff. Call this last, "

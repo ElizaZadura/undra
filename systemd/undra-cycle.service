@@ -12,9 +12,11 @@ Group=elz
 WorkingDirectory=/srv/lab/undra
 ExecStart=/srv/lab/undra/bin/run-cycle.sh
 
-# Set to 1 once the GitHub remote is configured and you want the audit trail
-# pushed offsite each cycle. Left off by default: pushing is outward-facing.
-Environment=UNDRA_PUSH=0
+# Enabled 2026-08-06. The remote is configured and the redacted ledger dump is
+# the offsite backup of the audit trail (AGENTS.md #12) — a cycle whose record
+# exists only on this box is one disk failure from unevidenced. Set to 0 to
+# stop publishing without stopping the loop.
+Environment=UNDRA_PUSH=1
 
 # A cycle that has not finished in 20 minutes is wedged. The watchdog counts
 # staleness separately (max_hours_without_cycle = 6), but a hung container

@@ -1,28 +1,46 @@
 name: CI
 
+# Exists so that CHARTER.md §5's "merge PRs that pass CI" can actually be
+# satisfied. Without a workflow the merge tool reports a verdict of "none" and
+# refuses — an absent test suite is not a passing one, so Coral cannot complete
+# the review half of its build loop until something here goes green.
+
 on:
   push:
+    branches: [main]
   pull_request:
+
+permissions:
+  contents: read
 
 jobs:
   test:
+    name: Run All Tests
     runs-on: ubuntu-latest
-
     steps:
-    - name: Checkout repository
-      uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          if [ -f app/requirements.txt ]; then pip install -r app/requirements.txt; fi
+          if [ -f runner/requirements.txt ]; then pip install -r runner/requirements.txt; fi
+      - name: Run tests
+        run: python3 -m unittest discover -s tests -v
 
-    - name: Set up Python
-      uses: actions/setup-python@v5
-      with:
-        python-version: "3.12"
-
-    - name: Install dependencies
-      run: |
-        python -m pip install --upgrade pip
-        if [ -f runner/requirements.txt ]; then pip install -r runner/requirements.txt; fi
-        if [ -f app/requirements.txt ]; then pip install -r app/requirements.txt; fi
-
-    - name: Run tests
-      run: |
-        python3 -m unittest discover -s tests -v
+  secrets:
+    name: no credentials committed
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      # A key that has ever been committed is compromised even after removal,
+      # so this fails the build rather than reporting a warning.
+      - name: Scan for credential patterns
+        run: |
+          if git grep -nIE 'AIza[0-9A-Za-z_-]{30,}|gh[pousr]_[0-9A-Za-z]{30,}|github_pat_[0-9A-Za-z_]{40,}|[0-9]{8,10}:AA[0-9A-Za-z_-]{30,}|BEGIN [A-Z ]*PRIVATE KEY' -- . ':!.github/workflows/ci.yml'; then
+            echo "::error::Credential-shaped string found in the tree."
+            exit 1
+          fi
+          echo "clean"

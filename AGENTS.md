@@ -92,9 +92,22 @@ Each of these silently breaks something if missed.
    ceiling this system has by roughly an order of magnitude.
 
 10. **Jules sessions:** `requirePlanApproval` for anything touching payments,
-    auth or user data; `autoPr` otherwise. On CI failure Coral files a follow-up
-    session. `max_repeated_action_failures = 5` stops it looping — do not
-    implement a separate retry ceiling that disagrees with the watchdog.
+    auth or user data. On CI failure Coral files a follow-up session.
+    `max_repeated_action_failures = 5` stops it looping — do not implement a
+    separate retry ceiling that disagrees with the watchdog.
+
+    **`autoPr` is not a field this API accepts** (probed 2026-08-06 —
+    `autoPr`, `autoPR`, `auto_pr`, `automaticPullRequest` and
+    `createPullRequest` are all rejected with HTTP 400). Sending it fails the
+    whole request. A finished session with no PR needs a human to click Publish;
+    there is no submit endpoint either.
+
+    **Never merge `main` into a long-lived feature branch.** The ops loop
+    commits regenerated `docs/` and `reports/` to `main` every four hours, so
+    the merge drags generated files onto the branch and they diverge again on
+    the next cycle. Five cycles were spent on exactly this on 2026-08-07; every
+    task succeeded and nothing moved. Prefer short-lived branches, and re-apply
+    work onto a fresh branch rather than reconciling a stale one.
 
 11. **Credentials are per-container.** `env/ops.env` (free key, Telegram token,
     GitHub PAT) and `env/app.env` (paid key only), both mode 600, both
@@ -114,6 +127,14 @@ Each of these silently breaks something if missed.
     raw `ledger.db` is gitignored and lives only on `red`; the dump is the offsite
     backup of the audit trail. Redacted means: no `payments` detail, no
     customer-identifying columns.
+13. **Watch for work that succeeds and changes nothing.**
+    `max_repeated_action_failures` counts *failures*, and is blind to the
+    opposite shape: an action that completes every time while the state it
+    targets never moves. `max_cycles_without_progress` counts distinct cycles
+    instead, because three attempts inside one cycle is iteration while the same
+    job reappearing in three separate cycles means each fresh instance drew the
+    same conclusion from the same facts. That cannot be fixed by retrying, and
+    the correct output is an escalation.
 
 ---
 

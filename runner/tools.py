@@ -664,7 +664,17 @@ def declarations() -> list[dict]:
                        "repository asynchronously and opens a PR. This is how "
                        "you build things — you have no shell and no git tools, "
                        "by design. Authorised by CHARTER.md §5; no approval "
-                       "token needed. Free tier is 15 tasks/day."),
+                       "token needed. Free tier is 15 tasks/day.\n\n"
+                       "NEVER ask Jules to merge main into a feature branch, or "
+                       "to resolve conflicts caused by having done so. The ops "
+                       "loop commits regenerated docs/ and reports/ to main "
+                       "every four hours, so merging main onto a branch drags "
+                       "those files across and they diverge again on the next "
+                       "cycle. On 2026-08-07 that consumed five cycles: every "
+                       "task succeeded, nothing changed, and the branch was "
+                       "racing a timer it could not beat. If a branch is stale "
+                       "or conflicted, the answer is a NEW branch with the work "
+                       "re-applied, or an escalation — never another merge."),
           parameters={"type": "object", "properties": {
               "title": {"type": "string", "description": "Short name for the task."},
               "prompt": {"type": "string",

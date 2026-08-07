@@ -1,0 +1,168 @@
+#!/usr/bin/env python3
+"""Every number the build record quotes, read from source.
+
+The build record is a document about honesty, so the figures in it must not be
+retyped from a previous version or recalled from a conversation. This script is
+the single source: run it, and quote what it prints.
+
+    bin/build-record-facts            human-readable
+    bin/build-record-facts --json     machine-readable
+
+Reads git history and the ledger. Writes nothing.
+"""
+
+from __future__ import annotations
+
+import argparse
+import json
+import sqlite3
+import subprocess
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parents[1]
+LEDGER = ROOT / "ledger.db"
+
+
+def git(*args: str) -> str:
+    return subprocess.run(("git", "-C", str(ROOT), *args),
+                          capture_output=True, text=True, timeout=20).stdout.strip()
+
+
+def collect() -> dict:
+    con = sqlite3.connect(LEDGER)
+    con.row_factory = sqlite3.Row
+    q = lambda s, *a: con.execute(s, a).fetchone()[0]  # noqa: E731
+
+    authors: dict[str, int] = {}
+    for line in git("log", "--format=%an").splitlines():
+        authors[line] = authors.get(line, 0) + 1
+
+    def loc(pattern: str) -> int:
+        files = sorted(ROOT.glob(pattern))
+        return sum(len(f.read_text(errors="replace").splitlines())
+                   for f in files if f.is_file())
+
+    tests = subprocess.run(
+        [sys.executable, "-m", "unittest", "discover", "-s", "tests",
+         "-p", "test_guarantees*.py"],
+        cwd=ROOT, capture_output=True, text=True, timeout=120)
+    import re
+    m = re.search(r"Ran (\d+) tests", tests.stderr + tests.stdout)
+
+    sys.path.insert(0, str(ROOT))
+    try:
+        from runner import tools
+        tool_count = len(tools.declarations())
+    except Exception:  # noqa: BLE001
+        tool_count = None
+
+    data = {
+        "generated_at": q("SELECT datetime('now')"),
+        "commits_by_author": authors,
+        "commit_timeline": [
+            l for l in git("log", "--reverse",
+                           "--format=%ad %an | %s",
+                           "--date=format:%m-%d %H:%M").splitlines()],
+        "cycles": {
+            "total": q("SELECT COUNT(*) FROM cycles"),
+            "by_status": {r["status"]: r["n"] for r in con.execute(
+                "SELECT status, COUNT(*) n FROM cycles GROUP BY status")},
+            "first": q("SELECT MIN(started_at) FROM cycles"),
+            "latest": q("SELECT MAX(started_at) FROM cycles"),
+        },
+        "decisions": {
+            "total": q("SELECT COUNT(*) FROM decisions"),
+            "by_agent": q("SELECT COUNT(*) FROM decisions WHERE cycle_id IS NOT NULL"),
+            "by_operator": q("SELECT COUNT(*) FROM decisions WHERE cycle_id IS NULL"),
+            "agent_summaries": [r["summary"] for r in con.execute(
+                "SELECT summary FROM decisions WHERE cycle_id IS NOT NULL ORDER BY id")],
+        },
+        "actions": {
+            "ok": q("SELECT COUNT(*) FROM actions WHERE status='ok'"),
+            "failed": q("SELECT COUNT(*) FROM actions WHERE status='failed'"),
+            "by_kind": {r["kind"]: r["n"] for r in con.execute(
+                "SELECT kind, COUNT(*) n FROM actions GROUP BY kind")},
+        },
+        "llm": {
+            "calls": q("SELECT COUNT(*) FROM llm_usage"),
+            "usd_est": round(q("SELECT COALESCE(SUM(usd_est),0) FROM llm_usage"), 4),
+            "tokens_billed": q("SELECT COALESCE(SUM(total_tokens),0) FROM llm_usage"),
+            "tokens_reasoning": q("SELECT COALESCE(SUM(thinking_tokens),0) FROM llm_usage"),
+            "by_key_role": {(r["key_role"] or "unattributed"): r["n"]
+                            for r in con.execute(
+                                "SELECT key_role, COUNT(*) n FROM llm_usage "
+                                "GROUP BY key_role")},
+        },
+        "human_requests": q("SELECT COUNT(*) FROM human_requests"),
+        "open_questions": {
+            "total": q("SELECT COUNT(*) FROM open_questions"),
+            "answered": q("SELECT COUNT(*) FROM open_questions WHERE answer IS NOT NULL"),
+            "unanswered_text": [r["question"] for r in con.execute(
+                "SELECT question FROM open_questions WHERE answer IS NULL ORDER BY id")],
+        },
+        "objectives": {
+            "total": q("SELECT COUNT(*) FROM objectives"),
+            "done": q("SELECT COUNT(*) FROM objectives WHERE status='done'"),
+            "open_titles": [r["title"] for r in con.execute(
+                "SELECT title FROM objectives WHERE status='open' ORDER BY priority")],
+        },
+        "events": q("SELECT COUNT(*) FROM events"),
+        "loc": {"runner": loc("runner/*.py"),
+                "app": loc("app/*.py") + loc("app/static/*")},
+        "tests": int(m.group(1)) if m else None,
+        "tools": tool_count,
+    }
+    con.close()
+    return data
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--json", action="store_true")
+    args = ap.parse_args()
+
+    d = collect()
+    if args.json:
+        print(json.dumps(d, indent=2, default=str))
+        return 0
+
+    print(f"BUILD RECORD FACTS — generated {d['generated_at']}\n")
+    print("COMMITS BY AUTHOR")
+    for a, n in sorted(d["commits_by_author"].items(), key=lambda x: -x[1]):
+        print(f"  {n:4}  {a}")
+    c = d["cycles"]
+    print(f"\nCYCLES: {c['total']} total  ({c['first'][:16]} → {c['latest'][:16]})")
+    for s, n in c["by_status"].items():
+        print(f"  {s:12} {n}")
+    de = d["decisions"]
+    print(f"\nDECISIONS: {de['total']}  (agent {de['by_agent']}, operator {de['by_operator']})")
+    ac = d["actions"]
+    print(f"\nACTIONS: {ac['ok']} ok, {ac['failed']} failed")
+    for k, n in ac["by_kind"].items():
+        print(f"  {k:16} {n}")
+    ll = d["llm"]
+    print(f"\nLLM: {ll['calls']} calls, ${ll['usd_est']:.2f} estimated")
+    print(f"  tokens billed    {ll['tokens_billed']:,}")
+    print(f"  of which reasoning {ll['tokens_reasoning']:,}")
+    for r, n in ll["by_key_role"].items():
+        print(f"  key {r:14} {n}")
+    print(f"\nOTHER")
+    print(f"  events           {d['events']}")
+    print(f"  human requests   {d['human_requests']}")
+    print(f"  open questions   {d['open_questions']['total']} "
+          f"({d['open_questions']['answered']} answered)")
+    print(f"  objectives       {d['objectives']['total']} "
+          f"({d['objectives']['done']} done)")
+    print(f"  tests            {d['tests']}")
+    print(f"  agent tools      {d['tools']}")
+    print(f"  runner LOC       {d['loc']['runner']:,}")
+    print(f"  product LOC      {d['loc']['app']:,}")
+    print("\nOPEN OBJECTIVES")
+    for t in d["objectives"]["open_titles"]:
+        print(f"  · {t[:100]}")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

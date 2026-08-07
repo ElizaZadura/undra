@@ -213,6 +213,79 @@ def t_add_objective(ctx: ToolContext, *, priority: int, title: str) -> dict:
     return {"objective_id": oid}
 
 
+def t_complete_objective(ctx: ToolContext, *, objective_id: int,
+                         evidence: str) -> dict:
+    """Mark an objective done. Requires evidence, not an assertion.
+
+    CHARTER.md §6.6: before a capability claim ships, name the commit or the
+    running service that demonstrates it. "I believe this is finished" is not
+    evidence; "PR #5 merged at 12:12, CI passed on three jobs" is.
+    """
+    if not evidence.strip():
+        raise ToolError(
+            "evidence is required: name the commit, pull request, deployed "
+            "service or ledger row that demonstrates this is actually done "
+            "(CHARTER.md §6.6). If you cannot name one, it is not done.")
+    row = ctx.ledger.objective(objective_id)
+    if row is None:
+        raise ToolError(f"no objective #{objective_id}")
+    if row["status"] != "open":
+        return {"status": "already_closed", "was": row["status"],
+                "note": "Nothing to do. Do not re-close it."}
+
+    ctx.ledger.close_objective(objective_id, "done")
+    ctx.ledger.decision(
+        cycle_id=ctx.cycle.id,
+        summary=f"Completed objective: {row['title'][:150]}",
+        rationale="Marked done because the work it describes has shipped.",
+        evidence=evidence,
+        reversible=True,
+        falsifier="If the thing this objective asked for turns out not to work, "
+                  "or not to exist, it was closed too early and should be reopened "
+                  "as a new objective rather than edited.")
+    ctx.cycle.note_productive()
+    return {"objective_id": objective_id, "status": "done"}
+
+
+def t_retire_objective(ctx: ToolContext, *, objective_id: int,
+                       rationale: str) -> dict:
+    """Drop an objective that no longer serves the mission.
+
+    CHARTER.md §5 grants this explicitly, and requires a logged rationale.
+    Retiring is not completing: use this when the objective was wrong, has been
+    superseded, or is no longer worth the remaining hours — and say which.
+    """
+    if not rationale.strip():
+        raise ToolError(
+            "rationale is required: CHARTER.md §5 permits retiring an objective "
+            "only with a logged reason. Say why it no longer serves the mission.")
+    row = ctx.ledger.objective(objective_id)
+    if row is None:
+        raise ToolError(f"no objective #{objective_id}")
+    if row["status"] != "open":
+        return {"status": "already_closed", "was": row["status"]}
+
+    ctx.ledger.close_objective(objective_id, "retired")
+    ctx.ledger.decision(
+        cycle_id=ctx.cycle.id,
+        summary=f"Retired objective: {row['title'][:150]}",
+        rationale=rationale,
+        evidence="Retired rather than completed — the work was not done.",
+        reversible=True,
+        falsifier="If a later cycle finds this objective still matters, retiring "
+                  "it was wrong; add it back rather than pretending it was done.")
+    ctx.cycle.note_productive()
+    return {"objective_id": objective_id, "status": "retired"}
+
+
+def t_set_objective_priority(ctx: ToolContext, *, objective_id: int,
+                             priority: int) -> dict:
+    """Reprioritise. CHARTER.md §5 standing latitude."""
+    if not ctx.ledger.set_objective_priority(objective_id, priority):
+        raise ToolError(f"objective #{objective_id} is missing or not open")
+    return {"objective_id": objective_id, "priority": priority}
+
+
 def t_log_open_question(ctx: ToolContext, *, question: str,
                         blocking: bool = False) -> dict:
     qid = ctx.ledger.open_question(question, blocking)
@@ -588,6 +661,9 @@ TOOL_IMPLS: dict[str, Callable[..., dict]] = {
     "merge_pull_request": t_merge_pull_request,
     "log_decision": t_log_decision,
     "add_objective": t_add_objective,
+    "complete_objective": t_complete_objective,
+    "retire_objective": t_retire_objective,
+    "set_objective_priority": t_set_objective_priority,
     "log_open_question": t_log_open_question,
     "request_human": t_request_human,
     "fetch_url": t_fetch_url,
@@ -627,6 +703,37 @@ def declarations() -> list[dict]:
               "priority": {"type": "integer", "description": "1 is highest."},
               "title": {"type": "string"},
           }, "required": ["priority", "title"]}),
+
+        S(name="complete_objective",
+          description=("Mark an objective done. Requires evidence — name the "
+                       "commit, pull request or running service that shows it. "
+                       "Do this as soon as work ships: an objective list that "
+                       "still names finished work will have you re-reading it "
+                       "every cycle, and you have no memory of having done it."),
+          parameters={"type": "object", "properties": {
+              "objective_id": {"type": "integer"},
+              "evidence": {"type": "string",
+                           "description": "What demonstrates this is done. "
+                                          "'I think it is finished' is not evidence."},
+          }, "required": ["objective_id", "evidence"]}),
+
+        S(name="retire_objective",
+          description=("Drop an objective that no longer serves the mission. "
+                       "CHARTER.md §5 permits this with a logged rationale. "
+                       "Retiring is not completing — use it when the objective "
+                       "was wrong, superseded, or not worth the hours left."),
+          parameters={"type": "object", "properties": {
+              "objective_id": {"type": "integer"},
+              "rationale": {"type": "string",
+                            "description": "Why it no longer serves the mission."},
+          }, "required": ["objective_id", "rationale"]}),
+
+        S(name="set_objective_priority",
+          description="Reprioritise an open objective. 1 is highest.",
+          parameters={"type": "object", "properties": {
+              "objective_id": {"type": "integer"},
+              "priority": {"type": "integer"},
+          }, "required": ["objective_id", "priority"]}),
 
         S(name="log_open_question",
           description=("Record something you do not know. Use this rather than "

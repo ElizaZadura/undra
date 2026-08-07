@@ -251,6 +251,38 @@ class Ledger:
         self.con.commit()
         return int(cur.lastrowid)
 
+    def objective(self, objective_id: int) -> sqlite3.Row | None:
+        return self.con.execute(
+            "SELECT * FROM objectives WHERE id=?", (objective_id,)).fetchone()
+
+    def close_objective(self, objective_id: int, status: str) -> bool:
+        """Mark an objective done or retired. Returns False if it was not open.
+
+        Until 2026-08-07 nothing could do this: add_objective existed and no
+        counterpart did, so the list only ever grew. CHARTER.md §5 grants the
+        latitude — "retire objectives that no longer serve the mission, with a
+        logged rationale" — and the tool surface withheld it, which left the
+        agent re-reading shipped work every four hours while §8.3 told it that
+        anything off the list was not work.
+        """
+        row = self.objective(objective_id)
+        if row is None or row["status"] != "open":
+            return False
+        self.con.execute(
+            "UPDATE objectives SET status=?, done_at=? WHERE id=?",
+            (status, utcnow(), objective_id))
+        self.con.commit()
+        return True
+
+    def set_objective_priority(self, objective_id: int, priority: int) -> bool:
+        row = self.objective(objective_id)
+        if row is None or row["status"] != "open":
+            return False
+        self.con.execute("UPDATE objectives SET priority=? WHERE id=?",
+                         (priority, objective_id))
+        self.con.commit()
+        return True
+
     # -- redacted dump ------------------------------------------------------- #
 
     # AGENTS.md #12: the raw ledger.db is gitignored and lives only on `red`.

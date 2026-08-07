@@ -14,13 +14,13 @@ Roughly ten minutes.
 
 ## 0. Which project
 
-`undra`, not `undra-free`. The product handles user data and must use the paid
+**`undra-504613`**, not `undra-free`. The project *name* is `undra`; the **id** carries a numeric suffix because ids are globally unique, and it is the id every command below needs. The product handles user data and must use the paid
 key — `invariants.toml` pins `user_data_key = "paid"` and `CHARTER.md` §3.4 is
 why: free-tier prompts may be used for training, and users photograph letters
 carrying their name, address and personnummer.
 
 ```bash
-gcloud config set project undra
+gcloud config set project undra-504613
 ```
 
 ---
@@ -68,7 +68,7 @@ gcloud secrets create undra-gemini-key --replication-policy=automatic --data-fil
 Then let the runtime service account read it:
 
 ```bash
-PROJECT_NUMBER=$(gcloud projects describe undra --format='value(projectNumber)')
+PROJECT_NUMBER=$(gcloud projects describe undra-504613 --format='value(projectNumber)')
 gcloud secrets add-iam-policy-binding undra-gemini-key \
   --member="serviceAccount:${PROJECT_NUMBER}-compute@developer.gserviceaccount.com" \
   --role=roles/secretmanager.secretAccessor
@@ -77,10 +77,10 @@ gcloud secrets add-iam-policy-binding undra-gemini-key \
 And let Cloud Build deploy to Cloud Run:
 
 ```bash
-gcloud projects add-iam-policy-binding undra \
+gcloud projects add-iam-policy-binding undra-504613 \
   --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
   --role=roles/run.admin
-gcloud projects add-iam-policy-binding undra \
+gcloud projects add-iam-policy-binding undra-504613 \
   --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
   --role=roles/iam.serviceAccountUser
 ```

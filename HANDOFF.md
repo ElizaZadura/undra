@@ -127,10 +127,14 @@ distinct: infra on credit, Coral's model spend on Prepay.
 
 **Two GCP projects, not one** (recorded 2026-08-06):
 
-| Project | Billing | Key lives in | Serves |
-|---|---|---|---|
-| `undra-free` | none — free tier | `env/ops.env` | Coral's operator loop |
-| `undra` | Cloud billing account on a limit-capped Revolut card, own budget alerts | `env/app.env` | the deployed product |
+| Project | id | Billing | Key lives in | Serves |
+|---|---|---|---|---|
+| undra-free | *(free tier)* | none | `env/ops.env` | Coral's operator loop |
+| undra | **`undra-504613`** | `My Billing Account` `01E0FA-16AE45-963492`, which holds the trial credit | `env/app.env` | the deployed product |
+
+The project **id** is not the project **name**. Ids are globally unique, so
+`undra` was taken and the id carries a numeric suffix. Every `gcloud` command
+needs the id; the console shows the name. Confirmed 2026-08-07.
 
 **Verified against both keys 2026-08-06** (`generateContent`, not just `models.list`
 — the list endpoint returns models the tier cannot actually serve):

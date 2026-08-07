@@ -299,6 +299,74 @@ def collect_rates(rep: Report, con, cfg: dict) -> None:
             ", ".join(f"{s['kind']}/{s['target']}" for s in streaks[:3]), "halt"))
 
 
+def collect_stuck_work(rep: Report, con, cfg: dict) -> None:
+    """Work that keeps succeeding and keeps achieving nothing.
+
+    `max_repeated_action_failures` catches actions that FAIL repeatedly. It is
+    blind to the opposite and more insidious shape: an action that succeeds every
+    time while the underlying state never moves. Observed 2026-08-07 — three
+    consecutive cycles each filed a Jules task against the same pull request
+    conflict, each filing succeeded, and the conflict was still there at the end.
+    Nothing failed, so nothing warned.
+
+    The signal is distinct cycles, not attempt count. Three tries inside one
+    cycle is iteration; the same work reappearing in three separate cycles means
+    each fresh instance of the agent looked at the state, drew the same
+    conclusion, and got the same non-result. That is the stateless-agent version
+    of a stuck loop, and no amount of retrying inside a cycle will break it.
+    """
+    threshold = cfg["rates"].get("max_cycles_without_progress", 3)
+    day_ago = (rep.now - timedelta(days=1)).isoformat()
+
+    # Group by kind and a coarse target, because the same underlying job gets
+    # described differently each cycle — "resolve conflicts", "merge main in",
+    # "push a commit to trigger CI" were all the same stuck work.
+    rows = con.execute(
+        """SELECT kind, target, COUNT(DISTINCT cycle_id) cycles,
+                  COUNT(*) attempts, MIN(at) first_at, MAX(at) last_at
+           FROM actions
+           WHERE at > ? AND cycle_id IS NOT NULL
+           GROUP BY kind, target
+           HAVING cycles >= ?
+           ORDER BY cycles DESC""", (day_ago, threshold)).fetchall()
+
+    # Same kind, different wording each cycle: group by kind alone as a second
+    # pass, so re-described work is still caught.
+    by_kind = con.execute(
+        """SELECT kind, COUNT(DISTINCT cycle_id) cycles, COUNT(*) n,
+                  GROUP_CONCAT(DISTINCT target) targets
+           FROM actions
+           WHERE at > ? AND cycle_id IS NOT NULL AND status='ok'
+           GROUP BY kind
+           HAVING cycles >= ?""", (day_ago, threshold)).fetchall()
+
+    lines: list[str] = []
+    for r in rows:
+        lines.append(f"{r['kind']} -> {r['target']}: same target in "
+                     f"{r['cycles']} cycles ({r['attempts']} attempts), "
+                     f"first {r['first_at'][11:16]} last {r['last_at'][11:16]}")
+    for r in by_kind:
+        targets = [t for t in (r["targets"] or "").split(",") if t]
+        if len(targets) > 1:
+            lines.append(
+                f"{r['kind']}: {r['cycles']} consecutive cycles, {len(targets)} "
+                f"differently-worded targets — likely the same work re-described. "
+                f"Latest: {targets[-1][:70]}")
+
+    if lines:
+        rep.sections["REPEATED WORK WITHOUT PROGRESS"] = lines + [
+            "",
+            "Each of these succeeded every time and changed nothing. Re-filing it "
+            "will not help — a different instance of you already tried that.",
+            "Escalate with request_human, state exactly what is stuck and where, "
+            "and move to other objectives (CHARTER.md §8.1).",
+        ]
+        rep.breaches.append(Breach(
+            "progress.stalled",
+            f"{len(lines)} piece(s) of work repeated across "
+            f"{threshold}+ cycles with no state change", "warn"))
+
+
 def collect_staleness(rep: Report, con, cfg: dict) -> None:
     s = cfg["staleness"]
     last_evt = con.execute("SELECT MAX(at) FROM events").fetchone()[0]
@@ -556,6 +624,7 @@ def main() -> int:
                lambda: collect_halt_flag(rep, con),
                lambda: collect_budget(rep, con, cfg),
                lambda: collect_rates(rep, con, cfg),
+               lambda: collect_stuck_work(rep, con, cfg),
                lambda: collect_staleness(rep, con, cfg),
                lambda: collect_work(rep, con),
                lambda: collect_revenue(rep, con),

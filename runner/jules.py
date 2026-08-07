@@ -110,6 +110,21 @@ class Jules:
         if require_plan_approval is None:
             require_plan_approval = needs_plan_approval(prompt, title)
 
+        # NO autoPr FIELD. AGENTS.md #10 mentions autoPr, and it was added here
+        # on 2026-08-06 to stop finished work stranding as an unsubmitted patch.
+        # It broke the build loop: the v1alpha API rejects the whole request with
+        # 400 "Unknown name 'autoPr' at 'session'", so every jules_file_task call
+        # failed until it was removed. Probed 2026-08-06 — autoPr, autoPR,
+        # auto_pr, automaticPullRequest and createPullRequest are all rejected as
+        # unknown field names. Whatever AGENTS.md was describing, this API does
+        # not expose it under any of those spellings.
+        #
+        # So stranding is not solvable from here. Session 1652844863819652924
+        # completed with a full patch and produced a PR only after the Operator
+        # clicked Publish in the web UI, and there is no submit endpoint either
+        # (:submit, :publish and :createPullRequest all 404). Treat a completed
+        # session with no PR as needing a human, and say so rather than
+        # inventing a field to fix it.
         body = {
             "prompt": prompt,
             "title": title,

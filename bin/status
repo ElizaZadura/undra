@@ -1,0 +1,79 @@
+#!/usr/bin/env python3
+"""What is Coral doing right now?
+
+The digest is a push channel — once a day, whether you are looking or not. This
+is the pull: same picture, on demand, from the same ledger rows. Neither writes
+anything, so running it is always safe.
+
+    bin/status            the short view
+    bin/status --full     add recent events and the last handoff in full
+"""
+
+from __future__ import annotations
+
+import argparse
+import subprocess
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+
+from runner import config, digest          # noqa: E402
+from runner.ledger import Ledger           # noqa: E402
+
+
+def timer_state() -> str:
+    try:
+        out = subprocess.run(
+            ["systemctl", "list-timers", "undra-cycle.timer", "--no-pager"],
+            capture_output=True, text=True, timeout=10).stdout.splitlines()
+        for line in out:
+            if "undra-cycle" in line:
+                return line.strip()
+    except Exception:  # noqa: BLE001
+        pass
+    return "timer state unavailable"
+
+
+def main() -> int:
+    ap = argparse.ArgumentParser(description=__doc__)
+    ap.add_argument("--full", action="store_true")
+    args = ap.parse_args()
+
+    cfg = config.load()
+    led = Ledger(cfg.ledger_path)
+
+    print(digest.build(led, cfg).replace(
+        "[undra · daily digest]", "[undra · status]").replace(
+        "\nreply /halt to stop everything, no explanation needed.", "").replace(
+        "\n(automated message from the undra agent system)", ""))
+
+    print(f"\nTIMER: {timer_state()}")
+
+    prs = led.con.execute(
+        "SELECT COUNT(*) FROM actions WHERE kind='JULES_SESSION' AND status='ok'"
+    ).fetchone()[0]
+    print(f"JULES TASKS FILED: {prs}")
+
+    if args.full:
+        print("\nRECENT EVENTS")
+        for r in led.con.execute(
+                "SELECT at, level, source, message FROM events "
+                "ORDER BY id DESC LIMIT 15"):
+            print(f"  {r['at'][11:19]} [{r['level']:5}] {r['source']}: "
+                  f"{r['message'][:110]}")
+
+        last = led.con.execute(
+            "SELECT id, status, handoff FROM cycles ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if last:
+            print(f"\nLAST HANDOFF (cycle #{last['id']}, {last['status']})")
+            for line in (last["handoff"] or "").splitlines():
+                print(f"  {line}")
+
+    led.close()
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

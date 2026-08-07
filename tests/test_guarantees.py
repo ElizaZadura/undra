@@ -153,6 +153,26 @@ class LedgerTest(unittest.TestCase):
         ).fetchone()[0]
         self.assertEqual(warn, 1, "the forced 'ok' was downgraded silently")
 
+    # -- the Telegram backlog must not replay -------------------------------- #
+
+    def test_telegram_offset_round_trips(self):
+        """Without a persisted offset every cycle re-reads the whole backlog.
+        Harmless for `approve N`, but a single old `/halt` would be re-applied
+        forever: the Operator clears the flag and the next cycle sets it again,
+        with the cause hours in the past and invisible."""
+        from runner.telegram import get_offset, set_offset
+        self.assertIsNone(get_offset(self.led))
+        set_offset(self.led, 444293522)
+        self.assertEqual(get_offset(self.led), 444293522)
+        set_offset(self.led, 444293999)
+        self.assertEqual(get_offset(self.led), 444293999)
+
+    def test_telegram_offset_does_not_disturb_the_halt_flag(self):
+        from runner.telegram import set_offset
+        set_offset(self.led, 12345)
+        self.assertFalse(self.led.is_halted(),
+                         "writing the Telegram offset altered the halt flag")
+
     # -- CHARTER.md §9: a request without a default action is malformed ----- #
 
     def test_request_without_default_action_is_refused(self):
@@ -180,6 +200,80 @@ class LedgerTest(unittest.TestCase):
         self.assertNotIn("abc123", text, "recipient hash leaked into the public dump")
         self.assertNotIn("a subject line", text, "subject leaked into the public dump")
         self.assertIn('"row_count": 1', text, "payments should still be counted")
+
+
+class CiVerdictTest(unittest.TestCase):
+    """CHARTER.md §5 authorises merging PRs *that pass CI*. Absence of CI is not
+    a pass — a repository with no checks has demonstrated nothing, and treating
+    that as permission would let an agent merge unverified code into main."""
+
+    def _verdict(self, runs, combined_state, has_statuses=True):
+        from unittest.mock import patch
+        from runner.github import GitHub
+        gh = GitHub.__new__(GitHub)
+        gh.repo, gh.token = "x/y", "t"
+        payloads = [{"check_runs": runs},
+                    {"state": combined_state,
+                     "statuses": [{}] if has_statuses else []}]
+        with patch.object(GitHub, "_call", side_effect=payloads):
+            return gh.checks("deadbeef")["verdict"]
+
+    def test_no_checks_is_not_a_pass(self):
+        self.assertEqual(self._verdict([], None, has_statuses=False), "none")
+
+    def test_failing_check_is_fail(self):
+        self.assertEqual(
+            self._verdict([{"name": "t", "status": "completed",
+                            "conclusion": "failure"}], None), "fail")
+
+    def test_running_check_is_pending(self):
+        self.assertEqual(
+            self._verdict([{"name": "t", "status": "in_progress"}], None), "pending")
+
+    def test_all_green_is_pass(self):
+        self.assertEqual(
+            self._verdict([{"name": "t", "status": "completed",
+                            "conclusion": "success"}], "success"), "pass")
+
+    def test_one_failure_among_passes_is_fail(self):
+        self.assertEqual(
+            self._verdict([{"name": "a", "status": "completed", "conclusion": "success"},
+                           {"name": "b", "status": "completed", "conclusion": "failure"}],
+                          "success"), "fail")
+
+
+class ScrubberTest(unittest.TestCase):
+    """The scrubber must catch real card numbers and stop eating the audit trail.
+
+    Three consecutive decisions were withheld from the public log on 2026-08-06
+    because the card pattern matched a 19-digit Jules session id. The public log
+    is a graded deliverable, so a systematic false positive is not a free
+    trade-off — but a missed card would be worse, hence both directions here.
+    """
+
+    def setUp(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from publish_log import scan
+        self.scan = scan
+
+    def test_real_cards_are_still_caught(self):
+        for label, number in (("visa", "4111111111111111"),
+                              ("visa spaced", "4111 1111 1111 1111"),
+                              ("mastercard", "5500005555555559"),
+                              ("amex", "378282246310005"),
+                              ("discover", "6011111111111117")):
+            with self.subTest(label):
+                self.assertIn("card", self.scan(f"paid with {number} today"))
+
+    def test_jules_session_ids_are_not_cards(self):
+        """This exact id passes Luhn — checksum 100 — so the leading-digit check
+        is what saves it. Do not remove one and keep the other."""
+        self.assertEqual(self.scan("session 1652844863819652924 completed"), [])
+        self.assertEqual(self.scan("branch jules-1652844863819652924-781c3b6b"), [])
+
+    def test_other_patterns_are_untouched(self):
+        self.assertIn("personnummer", self.scan("born 890101-1234"))
+        self.assertIn("email", self.scan("mail to sam@example.com"))
 
 
 class LlmTest(unittest.TestCase):
@@ -241,6 +335,26 @@ class LlmTest(unittest.TestCase):
     def test_unpriced_model_is_flagged_not_silently_zero(self):
         _, guessed = estimate_usd("some-unreleased-model", 1000, 1000)
         self.assertTrue(guessed, "an unpriced model silently produced a cost figure")
+
+    def test_known_model_is_priced_from_the_table(self):
+        usd, guessed = estimate_usd("gemini-3.6-flash", 1_000_000, 1_000_000)
+        self.assertFalse(guessed)
+        self.assertAlmostEqual(usd, 1.50 + 7.50, places=4)
+
+    def test_large_prompt_tier_is_applied(self):
+        """Ignoring the >200k tier would undercount exactly when a cycle is at
+        its most expensive."""
+        small, _ = estimate_usd("gemini-3.1-pro-preview", 100_000, 1000)
+        big, _ = estimate_usd("gemini-3.1-pro-preview", 300_000, 1000)
+        self.assertAlmostEqual(small, (100_000 / 1e6) * 2.00 + (1000 / 1e6) * 12.00, places=6)
+        self.assertAlmostEqual(big, (300_000 / 1e6) * 4.00 + (1000 / 1e6) * 18.00, places=6)
+
+    def test_fallback_is_the_most_expensive_rate_not_an_average(self):
+        from runner.llm import FALLBACK_PRICING, PRICING
+        worst_in = max(p[0] for p in PRICING.values())
+        worst_out = max(p[1] for p in PRICING.values())
+        self.assertGreaterEqual(FALLBACK_PRICING[0], worst_in)
+        self.assertGreaterEqual(FALLBACK_PRICING[1], worst_out)
 
 
 if __name__ == "__main__":

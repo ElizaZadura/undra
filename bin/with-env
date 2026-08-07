@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Run a command with env/ops.env loaded, without spelling the sourcing out at
+# every call site.
+#
+#   bin/with-env python3 some_script.py
+#   bin/with-env ./bin/status
+#
+# Two reasons this exists. It keeps credentials out of the command line and out
+# of the transcript — the variables are only ever in the child's environment.
+# And it makes the command a single allowlistable token, where
+# `set -a; . env/ops.env; set +a; python3 …` is a compound string that no
+# permission rule can match cleanly.
+#
+# Reads env/app.env instead with --app, for anything that must use the paid key
+# and must NOT see the free one (CHARTER.md §3, AGENTS.md #11).
+
+set -euo pipefail
+cd "$(dirname "$0")/.."
+
+FILE="env/ops.env"
+if [ "${1:-}" = "--app" ]; then
+  FILE="env/app.env"
+  shift
+fi
+
+if [ ! -f "$FILE" ]; then
+  echo "with-env: $FILE not found" >&2
+  exit 1
+fi
+
+set -a
+# shellcheck disable=SC1090
+. "$FILE"
+set +a
+
+exec "$@"

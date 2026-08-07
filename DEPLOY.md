@@ -89,16 +89,34 @@ gcloud secrets add-iam-policy-binding undra-gemini-key \
   --role=roles/secretmanager.secretAccessor
 ```
 
-And let Cloud Build deploy to Cloud Run:
+And give the build account what it needs. **This is the step that fails on a
+new project.** Google stopped provisioning the legacy
+`PROJECT_NUMBER@cloudbuild.gserviceaccount.com` with broad permissions for
+projects created after roughly mid-2024, so builds run as the Compute Engine
+default account with almost nothing granted. The first symptom is a complaint
+about `storage.objects.get` — the build cannot read the source tarball it just
+uploaded, which reads like a bug in the build rather than a missing role.
 
 ```bash
-gcloud projects add-iam-policy-binding undra-504613 \
-  --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
-  --role=roles/run.admin
-gcloud projects add-iam-policy-binding undra-504613 \
-  --member="serviceAccount:${PROJECT_NUMBER}@cloudbuild.gserviceaccount.com" \
-  --role=roles/iam.serviceAccountUser
+SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
+
+for ROLE in \
+  roles/cloudbuild.builds.builder \
+  roles/storage.objectViewer \
+  roles/artifactregistry.writer \
+  roles/logging.logWriter \
+  roles/run.admin \
+  roles/iam.serviceAccountUser
+do
+  gcloud projects add-iam-policy-binding undra-504613 \
+    --member="serviceAccount:${SA}" --role="$ROLE" --condition=None --quiet
+done
 ```
+
+If an error names a different service account than `$SA`, grant the roles to
+whichever one it names — some projects route builds elsewhere. IAM changes take
+up to a minute, so an immediate identical failure is worth one retry before
+assuming the grants did not apply.
 
 ---
 

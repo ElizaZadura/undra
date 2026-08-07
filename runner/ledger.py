@@ -206,6 +206,41 @@ class Ledger:
             (utcnow(), channel, recipient_hash, subject, approval_request_id))
         self.con.commit()
 
+    # -- messages ------------------------------------------------------------ #
+    #
+    # Free text between the Operator and Coral. Never `outbound`, which counts
+    # third parties and halts at three an hour — the Operator is not a third
+    # party. Never `human_requests` either: every kind in invariants.toml is
+    # gated, so an agent with something to say and nothing to ask had to file a
+    # fake approval request to say it.
+
+    def message(self, direction: str, body: str,
+                cycle_id: int | None = None) -> int:
+        if direction not in ("to_operator", "from_operator"):
+            raise ValueError(f"direction must be to_operator or from_operator, "
+                             f"not {direction!r}")
+        cur = self.con.execute(
+            "INSERT INTO messages(at, direction, body, cycle_id) VALUES(?,?,?,?)",
+            (utcnow(), direction, body[:4000], cycle_id))
+        self.con.commit()
+        return int(cur.lastrowid)
+
+    def unread_from_operator(self) -> list[sqlite3.Row]:
+        return self.con.execute(
+            "SELECT id, at, body FROM messages "
+            "WHERE direction='from_operator' AND read_at IS NULL "
+            "ORDER BY at").fetchall()
+
+    def mark_messages_read(self, ids: list[int], cycle_id: int | None) -> None:
+        """Mark inbound notes seen, so a message is surfaced once rather than in
+        every situation report forever."""
+        if not ids:
+            return
+        self.con.executemany(
+            "UPDATE messages SET read_at=?, cycle_id=? WHERE id=?",
+            [(utcnow(), cycle_id, i) for i in ids])
+        self.con.commit()
+
     # -- human requests ----------------------------------------------------- #
 
     def request_human(self, *, kind: str, payload: str, priority: str,

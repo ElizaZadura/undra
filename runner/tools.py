@@ -293,6 +293,60 @@ def t_log_open_question(ctx: ToolContext, *, question: str,
     return {"question_id": qid}
 
 
+def t_mark_notes_read(ctx: ToolContext, *, note_ids: list) -> dict:
+    """Mark the Operator's notes seen, once you have acted on them or decided not to.
+
+    Unread notes appear in every situation report. Leaving one unread means the
+    next cycle — a different instance with no memory of you — reads it as new and
+    acts on it again. Mark it read even when the answer is "no", and log a
+    decision saying so.
+    """
+    ids = [int(i) for i in (note_ids or [])]
+    if not ids:
+        raise ToolError("note_ids is required")
+    ctx.ledger.mark_messages_read(ids, ctx.cycle.id)
+    return {"marked_read": ids}
+
+
+def t_message_operator(ctx: ToolContext, *, body: str) -> dict:
+    """Tell the Operator something. Not a request, and not gated.
+
+    Every kind in invariants.toml is a gated one, so until this existed an agent
+    with something to say and nothing to ask had to dress it up as an approval
+    request. On 2026-08-07 that produced an EXTERNAL_MESSAGE — the kind meaning
+    "a message to a person who did not write to you first" — whose payload was a
+    status update to the Operator, who is neither a stranger nor a third party.
+
+    Use this for: something worth knowing that needs no decision, an answer to a
+    note she left, or context that will not survive the handoff. Use
+    request_human when you actually need her to decide something.
+
+    Not written to `outbound`: she is not a third party, and that table halts at
+    three an hour (AGENTS.md #2).
+    """
+    if not body.strip():
+        raise ToolError("body is required")
+    if len(body) > 3000:
+        raise ToolError("too long for a message; put detail in a decision or an "
+                        "open question and send the summary")
+
+    mid = ctx.ledger.message("to_operator", body, cycle_id=ctx.cycle.id)
+    delivered = False
+    if ctx.telegram:
+        try:
+            ctx.telegram.send(
+                f"[undra · from Coral]\n\n{body}\n\n"
+                f"(automated message from the undra agent system)")
+            delivered = True
+        except Exception as exc:  # noqa: BLE001
+            ctx.ledger.event("warn", "telegram",
+                             f"message #{mid} not delivered: {exc}")
+    return {"message_id": mid, "delivered": delivered,
+            "note": "Sent, not asked. She may not reply, and nothing waits on her."
+                    if delivered else
+                    "Recorded in the ledger but not delivered — the channel is down."}
+
+
 def t_request_human(ctx: ToolContext, *, kind: str, payload: str,
                     priority: str = "digest", default_action: str = "") -> dict:
     """CHARTER.md §9: a request without a default action is malformed."""
@@ -747,6 +801,8 @@ TOOL_IMPLS: dict[str, Callable[..., dict]] = {
     "retire_objective": t_retire_objective,
     "set_objective_priority": t_set_objective_priority,
     "log_open_question": t_log_open_question,
+    "message_operator": t_message_operator,
+    "mark_notes_read": t_mark_notes_read,
     "request_human": t_request_human,
     "fetch_url": t_fetch_url,
     "jules_file_task": t_jules_file_task,
@@ -826,6 +882,29 @@ def declarations() -> list[dict]:
               "blocking": {"type": "boolean",
                            "description": "Does this stop work until answered?"},
           }, "required": ["question"]}),
+
+        S(name="mark_notes_read",
+          description=("Mark the Operator's notes as seen, once you have acted "
+                       "on them or decided not to. Unread notes appear in every "
+                       "situation report, so leaving one unread means the next "
+                       "cycle reads it as new and acts again."),
+          parameters={"type": "object", "properties": {
+              "note_ids": {"type": "array", "items": {"type": "integer"},
+                           "description": "The #ids shown in the report."},
+          }, "required": ["note_ids"]}),
+
+        S(name="message_operator",
+          description=("Tell the Operator something. NOT a request and not "
+                       "gated — use it for anything worth knowing that needs no "
+                       "decision, to answer a note she left, or for context that "
+                       "will not survive your handoff. Use request_human only "
+                       "when you actually need her to decide. Nothing waits on "
+                       "the reply."),
+          parameters={"type": "object", "properties": {
+              "body": {"type": "string",
+                       "description": "What you want to tell her. Short and "
+                                      "specific; she reads it on a phone."},
+          }, "required": ["body"]}),
 
         S(name="request_human",
           description=("Ask the Operator for something. Never block on the "

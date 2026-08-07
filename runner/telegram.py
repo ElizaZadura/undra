@@ -286,8 +286,19 @@ def process_updates(tg: Telegram, ledger, updates: list[Update]) -> int | None:
             ledger.event("info", "telegram", f"request #{rid} {new} by Operator")
             continue
 
+        # Anything else is a note to Coral. Previously this was logged as an
+        # "unparsed message" and went nowhere — the Operator could type at the
+        # bot all day and no cycle would ever see it.
         if text:
+            mid = ledger.message("from_operator", u.text)
             ledger.event("info", "telegram",
-                         f"unparsed message from Operator: {u.text[:300]!r}")
+                         f"note #{mid} from the Operator, queued for the next cycle")
+            try:
+                tg.send(f"[undra] Noted (#{mid}). Coral reads this at the start of "
+                        f"its next cycle — up to four hours from now, not "
+                        f"immediately.\n\n"
+                        f"(automated message from the undra agent system)")
+            except TelegramError:
+                pass
 
     return last

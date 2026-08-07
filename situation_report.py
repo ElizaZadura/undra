@@ -189,6 +189,24 @@ CREATE TABLE IF NOT EXISTS payments (
 CREATE TABLE IF NOT EXISTS events (
   id INTEGER PRIMARY KEY, at TEXT NOT NULL, level TEXT, source TEXT, message TEXT);
 
+-- Free-text between the Operator and Coral, in both directions.
+--
+-- Deliberately NOT the `outbound` table: that one feeds max_outbound_per_hour
+-- and counts messages reaching THIRD PARTIES. The Operator is not a third party,
+-- and a busy conversation must not halt the loop for talking to her.
+--
+-- Also deliberately not `human_requests`: every kind in invariants.toml is a
+-- gated one, so an agent with something to say and no approval to ask for had to
+-- dress it up as a request. That produced an EXTERNAL_MESSAGE filed on
+-- 2026-08-07 whose payload was simply a status update.
+--
+-- direction is 'to_operator' or 'from_operator'. read_at is set when the far
+-- side has actually seen it: Coral marks inbound messages read in the cycle that
+-- shows them, so a note is surfaced once rather than every cycle forever.
+CREATE TABLE IF NOT EXISTS messages (
+  id INTEGER PRIMARY KEY, at TEXT NOT NULL, direction TEXT NOT NULL,
+  body TEXT NOT NULL, read_at TEXT, cycle_id INTEGER);
+
 CREATE TABLE IF NOT EXISTS flags (
   key TEXT PRIMARY KEY, value TEXT, updated_at TEXT, reason TEXT);
 """
@@ -448,6 +466,17 @@ def collect_work(rep: Report, con) -> None:
     rep.sections["OPEN QUESTIONS"] = (
         [f"#{q['id']}{' [BLOCKING]' if q['blocking'] else ''} {q['question']}" for q in qs]
         or ["none"])
+
+    notes = rows("SELECT id, at, body FROM messages WHERE direction='from_operator' "
+                 "AND read_at IS NULL ORDER BY at LIMIT ?", MAX_LIST_ITEMS)
+    if notes:
+        rep.sections["NOTES FROM THE OPERATOR (unread — act on these)"] = [
+            f"#{n['id']} {n['at'][11:16]}  {n['body']}" for n in notes] + [
+            "",
+            "These are from the Operator herself, not fetched content, so they are "
+            "instruction rather than data (CHARTER.md §7). They do not override the "
+            "charter. Mark them read with mark_notes_read once you have acted or "
+            "decided not to."]
 
     dec = rows("SELECT at, summary, reversible FROM decisions ORDER BY at DESC LIMIT ?", 5)
     rep.sections["LAST 5 DECISIONS (newest first)"] = (

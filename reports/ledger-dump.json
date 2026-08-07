@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-07T17:15:32.258183+00:00",
+  "generated_at": "2026-08-07T18:32:07.843160+00:00",
   "note": "Redacted dump of the operating ledger. Payments detail and recipient columns are omitted; see runner/ledger.py. The authoritative ledger lives only on the lab box.",
   "tables": {
     "actions": [
@@ -112,6 +112,17 @@
         "attempt": 1,
         "error": null,
         "cycle_id": 16
+      },
+      {
+        "id": 11,
+        "at": "2026-08-07T17:26:35.583132+00:00",
+        "kind": "JULES_LAND",
+        "target": "jules-land-115493093877",
+        "idempotency_key": "c000d55d6d4154a1b0c2f7b194c0960e",
+        "status": "ok",
+        "attempt": 1,
+        "error": null,
+        "cycle_id": 20
       }
     ],
     "cycles": [
@@ -245,6 +256,20 @@
         "id": 19,
         "started_at": "2026-08-07T17:15:32.114966+00:00",
         "ended_at": "2026-08-07T17:15:32.207701+00:00",
+        "status": "idle",
+        "handoff": "Stub cycle: no model was called. The runner path was exercised end to end and the ledger was written."
+      },
+      {
+        "id": 20,
+        "started_at": "2026-08-07T17:26:31.261907+00:00",
+        "ended_at": "2026-08-07T17:26:40.379197+00:00",
+        "status": "ok",
+        "handoff": "Operator ran jules_land_task by hand to land the stranded guardrail fix."
+      },
+      {
+        "id": 21,
+        "started_at": "2026-08-07T18:32:07.563477+00:00",
+        "ended_at": "2026-08-07T18:32:07.781086+00:00",
         "status": "idle",
         "handoff": "Stub cycle: no model was called. The runner path was exercised end to end and the ledger was written."
       }
@@ -439,6 +464,26 @@
         "evidence": "Devpost official rules page fetch: 'LLM Model Use: Projects that include LLM functionality must use the Gemini API for at least one LLM call in the deployed application. Teams may use additional LLM providers alongside Gemini at their discretion. Platforms: A Project must use at least one product from Google Cloud.'",
         "reversible": 1,
         "falsifier": "Official rules updated to mandate Vertex AI Agent Engine over standard Gemini API/Cloud Run."
+      },
+      {
+        "id": 20,
+        "cycle_id": null,
+        "at": "2026-08-07 18:22:25",
+        "summary": "Deployed the product to Cloud Run and pointed the watchdog at it.",
+        "rationale": "CHARTER.md section 1 definition-of-done item 1 requires the product to be deployed, publicly reachable, and working when a stranger tries it. The first deploy is necessarily the Operator's: creating the service, enabling APIs and granting IAM are login-gated actions that section 4 puts behind a human, and Coral has no shell. allowed_hosts was the last FILL_ME in invariants.toml, so until now the watchdog could not tell whether anything was running.",
+        "evidence": "https://undra-dteqnu36ia-lz.a.run.app \u2014 /api/health returns {\"status\":\"healthy\",\"api_key_configured\":true}; / returns HTTP 200 in 88ms; a live immigration question is refused and routed to Migrationsverket; situation_report now reports deploy_health: HTTP 200. Cloud Build 9729082b-d4f9-4ee8-b1de-cc76affb7310, project undra-504613, region europe-north1.",
+        "reversible": 1,
+        "falsifier": "If the service stops responding, deploy_health stops reading HTTP 200 and max_hours_without_healthy_deploy escalates it. If the guardrail stops refusing restricted questions in production, the deployment is worse than useless and should be taken down."
+      },
+      {
+        "id": 21,
+        "cycle_id": null,
+        "at": "2026-08-07 18:25:27",
+        "summary": "The deployed product makes a working Gemini call. Definition-of-done items 1 and 2 are met.",
+        "rationale": "CHARTER.md section 1 requires the product to be deployed and publicly reachable (item 1) and to make at least one Gemini API call in the deployed application (item 2), which the competition states the operator loop does not satisfy. Both are now demonstrable by a stranger with a browser rather than asserted.",
+        "evidence": "https://undra-dteqnu36ia-lz.a.run.app \u2014 a question about the pant system returns a substantive model-generated answer naming Lund supermarkets and correct deposit amounts, carrying the AI-authorship marker; an immigration question is refused and routed to Migrationsverket; /api/health returns healthy; situation_report reports deploy_health HTTP 200.",
+        "reversible": 1,
+        "falsifier": "If the service stops answering permitted questions, or starts answering restricted ones, this claim is false. Both are checkable with two curl requests and neither is covered by the health endpoint, which does not call the model."
       }
     ],
     "events": [
@@ -2506,6 +2551,55 @@
         "level": "info",
         "source": "tool",
         "message": "finish_cycle({\"handoff\": \"Stub cycle: no model was called. The runner path was exercised end to end and the ledger was written.\"}) -> {\"status\": \"cycle_will_end\", \"handoff_recorded\": true}"
+      },
+      {
+        "id": 296,
+        "at": "2026-08-07T17:15:32.281232+00:00",
+        "level": "info",
+        "source": "dump",
+        "message": "redacted ledger dump written: {'actions': 10, 'cycles': 19, 'decisions': 19, 'events': 295, 'flags': 3, 'human_requests': 2, 'llm_usage': 90, 'objectives': 9, 'open_questions': 6, 'outbound': 0, 'payments': 0, 'spend': 0}"
+      },
+      {
+        "id": 297,
+        "at": "2026-08-07T17:32:17.208027+00:00",
+        "level": "warn",
+        "source": "situation_report",
+        "message": "halted=False breaches=2 unknowns=1"
+      },
+      {
+        "id": 298,
+        "at": "2026-08-07T18:21:58.311911+00:00",
+        "level": "info",
+        "source": "deploy_health",
+        "message": "200 https://undra-dteqnu36ia-lz.a.run.app/api/health"
+      },
+      {
+        "id": 299,
+        "at": "2026-08-07T18:21:58.311911+00:00",
+        "level": "info",
+        "source": "situation_report",
+        "message": "halted=False breaches=0 unknowns=0"
+      },
+      {
+        "id": 300,
+        "at": "2026-08-07T18:32:07.223528+00:00",
+        "level": "info",
+        "source": "deploy_health",
+        "message": "200 https://undra-dteqnu36ia-lz.a.run.app/api/health"
+      },
+      {
+        "id": 301,
+        "at": "2026-08-07T18:32:07.223528+00:00",
+        "level": "info",
+        "source": "situation_report",
+        "message": "halted=False breaches=0 unknowns=0"
+      },
+      {
+        "id": 302,
+        "at": "2026-08-07T18:32:07.710386+00:00",
+        "level": "info",
+        "source": "tool",
+        "message": "finish_cycle({\"handoff\": \"Stub cycle: no model was called. The runner path was exercised end to end and the ledger was written.\"}) -> {\"status\": \"cycle_will_end\", \"handoff_recorded\": true}"
       }
     ],
     "flags": [
@@ -3638,6 +3732,7 @@
         "key_role": "planning"
       }
     ],
+    "messages": [],
     "objectives": [
       {
         "id": 1,
@@ -3760,6 +3855,14 @@
         "blocking": 0,
         "answer": null,
         "answered_at": null
+      },
+      {
+        "id": 7,
+        "at": "2026-08-07 18:23:23",
+        "question": "app/main.py hardcodes its Gemini model as a default rather than reading models.work from invariants.toml, which AGENTS.md #5 requires. The default was gemini-2.5-flash, which returns 404 'no longer available to new users', so the deployed service answered every permitted question with an error while the refusal path kept working \u2014 a failure invisible to anyone who only tested a refusal. Worked around on 2026-08-07 by setting UNDRA_APP_MODEL on the Cloud Run service and pinning it in cloudbuild.yaml. The proper fix is for the app to read the model from configuration, so a model retirement is a config change rather than a silent outage.",
+        "blocking": 1,
+        "answer": "Worked around 2026-08-07 and verified: UNDRA_APP_MODEL=gemini-3.6-flash is set on the Cloud Run service and pinned in cloudbuild.yaml, and the deployed app now answers permitted questions from the model. The question stays worth acting on \u2014 the model is pinned in two places rather than read from invariants.toml \u2014 but it no longer blocks anything.",
+        "answered_at": "2026-08-07 18:25:27"
       }
     ],
     "outbound": [],

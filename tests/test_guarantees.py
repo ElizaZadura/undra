@@ -173,6 +173,29 @@ class LedgerTest(unittest.TestCase):
         self.assertFalse(self.led.is_halted(),
                          "writing the Telegram offset altered the halt flag")
 
+    # -- messages are not outbound, and are read once ------------------------ #
+
+    def test_messages_never_touch_the_outbound_rate_limiter(self):
+        """The Operator is not a third party. `outbound` halts at three an hour,
+        so a conversation with her must not be recorded there (AGENTS.md #2)."""
+        self.led.message("to_operator", "the deploy is up")
+        self.led.message("from_operator", "focus on the guardrail")
+        n = self.led.con.execute("SELECT COUNT(*) FROM outbound").fetchone()[0]
+        self.assertEqual(n, 0, "a message to the Operator reached `outbound`")
+
+    def test_a_note_is_surfaced_once_not_forever(self):
+        """Unread notes appear in every situation report. A note that is never
+        marked read is re-read as new by every subsequent cycle, each of which
+        is a different instance with no memory of the last."""
+        mid = self.led.message("from_operator", "please check the pant page")
+        self.assertEqual(len(self.led.unread_from_operator()), 1)
+        self.led.mark_messages_read([mid], cycle_id=1)
+        self.assertEqual(self.led.unread_from_operator(), [])
+
+    def test_direction_must_be_one_of_two_values(self):
+        with self.assertRaises(ValueError):
+            self.led.message("sideways", "hello")
+
     # -- CHARTER.md §9: a request without a default action is malformed ----- #
 
     def test_request_without_default_action_is_refused(self):

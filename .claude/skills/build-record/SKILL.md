@@ -47,8 +47,19 @@ importantly, the honesty conventions in it:
 
 - **The money figure is flagged as an estimate**, not a billed amount, with the reason
   (per-token rates are transcribed, token counts are measured). Keep that framing.
-- **The GitHub attribution caveat** — squash merges are credited to the token owner, so
-  git history over-counts the human. This matters for the submission and must survive.
+- **The attribution section is the most important part of the document and the easiest
+  to get wrong.** Git records who *committed*, not who *wrote*. Most commits name the
+  Operator as author but were written by Claude Code under her direction, and carry a
+  `Co-Authored-By` trailer that is the only evidence of it. The product code is
+  attributed to her three ways over: Jules wrote it, Coral commissioned and merged it,
+  and GitHub credited the squash merge to the token owner. Recount these every refresh:
+
+  ```bash
+  git log --format='%an|%(trailers:key=Co-Authored-By,valueonly)'
+  ```
+
+  Never collapse the contributors back into "human versus agent". There are five roles
+  and they did different things; the credits table at the top of the document names them.
 - **Defects are attributed honestly.** The table records which were in the scaffolding and
   which were the agent's. Do not soften it; a defect list where the agent looks flawless
   is less credible and less useful than the truth.

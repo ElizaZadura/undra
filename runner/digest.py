@@ -90,6 +90,30 @@ def build(ledger, cfg) -> str:
                        f"'deny {p['id']}'{mark}")
             out.append(f"      if no answer: {p['default_action']}")
 
+    # -- what is going in circles -------------------------------------------- #
+    # Work that succeeds every cycle and moves nothing. The failure counters are
+    # blind to this: nothing failed. Three cycles of it means each fresh instance
+    # of the agent reached the same conclusion and got the same non-result, so
+    # the loop cannot break itself and the recommendation is a human.
+    threshold = cfg.rates.get("max_cycles_without_progress", 3)
+    stuck = _rows(con,
+                  """SELECT kind, COUNT(DISTINCT cycle_id) cycles, COUNT(*) n,
+                            MAX(at) last_at, GROUP_CONCAT(DISTINCT target) targets
+                     FROM actions
+                     WHERE at > ? AND cycle_id IS NOT NULL AND status='ok'
+                     GROUP BY kind HAVING cycles >= ?
+                     ORDER BY cycles DESC""", day_ago, threshold)
+    if stuck:
+        out.append(f"\nSTUCK — HUMAN INTERVENTION RECOMMENDED:")
+        for s in stuck:
+            targets = [t for t in (s["targets"] or "").split(",") if t]
+            out.append(f"  {s['kind']}: {s['cycles']} cycles, {s['n']} attempts, "
+                       f"no state change. Last at {s['last_at'][11:16]}.")
+            for t in targets[-3:]:
+                out.append(f"      · {t[:110]}")
+            out.append("    Each attempt succeeded and changed nothing. Coral "
+                       "cannot break this by retrying.")
+
     # -- what is blocked ----------------------------------------------------- #
     questions = _rows(con, "SELECT id, question, blocking FROM open_questions "
                            "WHERE answer IS NULL ORDER BY blocking DESC, at")

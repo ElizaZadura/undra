@@ -26,8 +26,13 @@ jobs:
       # No dependencies: tests/test_guarantees.py is stdlib-only on purpose, and
       # runner/llm.py defers its google-genai import into the constructor so the
       # module can be tested without the SDK present.
+      #
+      # Pattern-matched rather than discovered. Bare `discover -s tests` also
+      # picks up tests/test_app_*.py, which import FastAPI and fail here by
+      # design — this job installs nothing, and that is the property being
+      # tested. The app tests have their own job below, with dependencies.
       - name: Run runner guarantee tests
-        run: python -m unittest discover -s tests -v
+        run: python -m unittest discover -s tests -p 'test_guarantees*.py' -v
 
   app-tests:
     name: app guardrails

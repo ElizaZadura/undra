@@ -43,6 +43,13 @@ max_repeated_action_failures = 5     # was 3: a first deploy failing three times
 # tell Eliza the limits are the bottleneck, not to stop for it.
 max_unproductive_cycles_per_day = 3
 
+# Work that succeeds every cycle and moves nothing. Distinct from
+# max_repeated_action_failures, which counts FAILURES — this counts the same job
+# reappearing in N separate cycles while the state it targets stays put. Each
+# cycle is a fresh instance drawing the same conclusion from the same facts, so
+# retrying is guaranteed not to help. Warns and escalates; does not halt.
+max_cycles_without_progress = 3
+
 [staleness]
 # Silence is a failure mode. These catch a wedged or crashed loop.
 #

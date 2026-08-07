@@ -61,9 +61,24 @@ A value passed with `--set-env-vars` is readable by anyone who can run
 description and out of the build logs.
 
 ```bash
-# paste the PAID key when prompted, then press Ctrl-D
-gcloud secrets create undra-gemini-key --replication-policy=automatic --data-file=-
+read -rs GEMINI_KEY          # paste the PAID key, press Enter — nothing is echoed
+printf %s "$GEMINI_KEY" | gcloud secrets create undra-gemini-key \
+  --replication-policy=automatic --data-file=-
+unset GEMINI_KEY
 ```
+
+`printf %s` rather than `echo`, and `--data-file=-` fed from a variable rather
+than from a paste, because both alternatives capture a trailing newline. A Gemini
+key with `\n` on the end fails authentication with errors that say nothing about
+whitespace. Check the length before going further — it should be exactly 53:
+
+```bash
+gcloud secrets versions access latest --secret=undra-gemini-key | wc -c
+```
+
+The key is the **paid** one, from `undra-504613` — the same value as
+`GOOGLE_API_KEY` in `env/app.env`. Copy it from AI Studio rather than off the lab
+box. Never the free key: `invariants.toml` pins `user_data_key = "paid"`.
 
 Then let the runtime service account read it:
 

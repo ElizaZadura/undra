@@ -1,6 +1,19 @@
 {
   "$schema": "https://json.schemastore.org/claude-code-settings.json",
 
+  "_comment": [
+    "This file governs Claude Code in interactive sessions with the Operator.",
+    "It has NOTHING to do with what Coral may do — Coral is constrained by",
+    "CHARTER.md, its 15-tool surface, the container, the halt flag and the",
+    "nftables rules, none of which this file touches.",
+    "",
+    "The allow list is deliberately broad, including python3, bash and docker,",
+    "which amounts to arbitrary code execution. That is an accepted trade: the",
+    "same commands were being approved by hand anyway, so the list changes the",
+    "friction, not the capability. The deny list below is therefore the real",
+    "boundary and is where care belongs."
+  ],
+
   "permissions": {
     "defaultMode": "acceptEdits",
 
@@ -29,12 +42,16 @@
       "Bash(git grep:*)",
       "Bash(git stash:*)",
       "Bash(git restore:*)",
+      "Bash(git merge-base:*)",
+      "Bash(git merge-tree:*)",
+      "Bash(git cat-file:*)",
 
       "Bash(python3:*)",
       "Bash(python:*)",
       "Bash(pip:*)",
       "Bash(pip3:*)",
       "Bash(bash:*)",
+      "Bash(sh:*)",
       "Bash(timeout:*)",
 
       "Bash(docker:*)",
@@ -48,48 +65,26 @@
       "Bash(systemctl show:*)",
       "Bash(journalctl:*)",
 
-      "Bash(ls:*)",
-      "Bash(cd:*)",
-      "Bash(mkdir:*)",
-      "Bash(mv:*)",
-      "Bash(cp:*)",
-      "Bash(chmod:*)",
-      "Bash(touch:*)",
-      "Bash(cat:*)",
-      "Bash(sed:*)",
-      "Bash(awk:*)",
-      "Bash(printf:*)",
-      "Bash(echo:*)",
-      "Bash(grep:*)",
-      "Bash(rg:*)",
-      "Bash(find:*)",
-      "Bash(head:*)",
-      "Bash(tail:*)",
-      "Bash(sort:*)",
-      "Bash(uniq:*)",
-      "Bash(wc:*)",
-      "Bash(diff:*)",
-      "Bash(file:*)",
-      "Bash(stat:*)",
-      "Bash(which:*)",
-      "Bash(hostname:*)",
-      "Bash(date:*)",
-      "Bash(id:*)",
-      "Bash(df:*)",
-      "Bash(free:*)",
-      "Bash(uptime:*)",
-      "Bash(ip:*)",
-      "Bash(sqlite3:*)",
-      "Bash(jq:*)"
+      "Bash(ls:*)", "Bash(cd:*)", "Bash(mkdir:*)", "Bash(mv:*)", "Bash(cp:*)",
+      "Bash(chmod:*)", "Bash(touch:*)", "Bash(cat:*)", "Bash(sed:*)",
+      "Bash(awk:*)", "Bash(printf:*)", "Bash(echo:*)", "Bash(grep:*)",
+      "Bash(rg:*)", "Bash(find:*)", "Bash(head:*)", "Bash(tail:*)",
+      "Bash(sort:*)", "Bash(uniq:*)", "Bash(wc:*)", "Bash(diff:*)",
+      "Bash(file:*)", "Bash(stat:*)", "Bash(which:*)", "Bash(hostname:*)",
+      "Bash(date:*)", "Bash(id:*)", "Bash(df:*)", "Bash(free:*)",
+      "Bash(uptime:*)", "Bash(ip:*)", "Bash(sqlite3:*)", "Bash(jq:*)",
+      "Bash(sleep:*)"
     ],
 
     "ask": [
       "Bash(git push:*)",
-      "Bash(git reset:*)",
+      "Bash(git reset --hard:*)",
       "Bash(git rebase:*)",
       "Bash(git merge:*)",
       "Bash(git filter-branch:*)",
+      "Bash(git tag:*)",
       "Bash(sudo:*)",
+      "Bash(su:*)",
       "Bash(systemctl start:*)",
       "Bash(systemctl stop:*)",
       "Bash(systemctl restart:*)",
@@ -97,20 +92,70 @@
       "Bash(systemctl disable:*)",
       "Bash(systemd-run:*)",
       "Bash(nft:*)",
+      "Bash(iptables:*)",
       "Bash(rm:*)",
+      "Bash(rmdir:*)",
       "Bash(curl:*)",
       "Bash(wget:*)",
       "Bash(apt:*)",
-      "Bash(apt-get:*)"
+      "Bash(apt-get:*)",
+      "Bash(snap:*)",
+      "Bash(crontab:*)",
+      "Bash(ssh:*)",
+      "Bash(scp:*)",
+      "Bash(rsync:*)"
     ],
 
     "deny": [
       "Read(./env/**)",
       "Read(./ledger.db)",
+      "Read(~/.ssh/**)",
+      "Read(~/.aws/**)",
+      "Read(~/.config/gcloud/**)",
+
       "Bash(git push --force:*)",
       "Bash(git push -f:*)",
+      "Bash(git push --force-with-lease:*)",
+      "Bash(git push --delete:*)",
+      "Bash(git branch -D:*)",
+      "Bash(git reflog expire:*)",
+      "Bash(git gc --prune:*)",
+
+      "Bash(rm -rf /:*)",
+      "Bash(rm -rf /*:*)",
+      "Bash(rm -rf ~:*)",
+      "Bash(rm -rf /home/*)",
+      "Bash(rm -rf /srv:*)",
+      "Bash(rm -rf /etc:*)",
+      "Bash(mkfs:*)",
+      "Bash(dd:*)",
+      "Bash(shred:*)",
+
       "Bash(cat env/*)",
-      "Bash(grep * env/*)"
+      "Bash(cat ./env/*)",
+      "Bash(cat ~/.ssh/*)",
+      "Bash(grep * env/*)",
+
+      "Bash(docker run * -v /:*)",
+      "Bash(docker run * -v /etc:*)",
+      "Bash(docker run * -v /home:*)",
+      "Bash(docker run * --privileged:*)",
+      "Bash(docker system prune:*)",
+      "Bash(docker volume rm:*)",
+
+      "Bash(chmod 777:*)",
+      "Bash(chown -R:*)",
+      "Bash(userdel:*)",
+      "Bash(usermod:*)",
+      "Bash(passwd:*)",
+
+      "Bash(nft flush:*)",
+      "Bash(nft delete table:*)",
+      "Bash(systemctl mask:*)",
+
+      "Bash(history -c:*)",
+      "Bash(journalctl --vacuum-time:*)",
+      "Bash(journalctl --rotate:*)"
     ]
   }
 }

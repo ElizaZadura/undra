@@ -102,12 +102,17 @@ Each of these silently breaks something if missed.
     whole request. A finished session with no PR needs a human to click Publish;
     there is no submit endpoint either.
 
-    **Never merge `main` into a long-lived feature branch.** The ops loop
-    commits regenerated `docs/` and `reports/` to `main` every four hours, so
-    the merge drags generated files onto the branch and they diverge again on
-    the next cycle. Five cycles were spent on exactly this on 2026-08-07; every
-    task succeeded and nothing moved. Prefer short-lived branches, and re-apply
-    work onto a fresh branch rather than reconciling a stale one.
+    **Prefer short-lived branches.** Until 2026-08-08 the ops loop committed
+    regenerated `docs/` and `reports/` to `main` every four hours, so merging
+    `main` into a long-lived branch dragged generated files onto it and they
+    diverged again on the next cycle. Five cycles went into that race on
+    2026-08-07; every task succeeded and nothing moved.
+
+    Those files now live on their own branch (`scope.publish_branch`, currently
+    `ops-log`) and `main` changes only when code changes, so the collision is
+    gone rather than merely documented. The advice survives its cause: a branch
+    that outlives a few cycles still accumulates ordinary drift, and re-applying
+    work onto a fresh branch still beats reconciling a stale one.
 
 11. **Credentials are per-container.** `env/ops.env` (free key, Telegram token,
     GitHub PAT) and `env/app.env` (paid key only), both mode 600, both
@@ -168,8 +173,10 @@ back is a regression, not an improvement.
   CHARTER.md  invariants.toml
   situation_report.py  publish_log.py
   runner/              <- what you are building
-  docs/                <- published to log.undra.nu
-  reports/             <- situation reports, committed
+  docs/                <- rendered log, published to log.undra.nu
+  reports/             <- situation reports
+                          both are generated, gitignored on main, and
+                          committed to the ops-log branch each cycle
 ```
 
 `.gitignore` must exist **before** `git init`. `ledger.db`, `ledger.db-wal`,

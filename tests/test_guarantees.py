@@ -437,7 +437,7 @@ class OffsiteTrailTest(unittest.TestCase):
             return sp.CompletedProcess(args, 0, stdout=outs[key] + "\n", stderr="")
 
         with patch.object(sr.subprocess, "run", side_effect=fake_run):
-            sr.collect_git(rep)
+            sr.collect_git(rep, {"scope": {"publish_branch": "ops-log"}})
         return rep
 
     def test_unpushed_commits_are_reported_as_a_fact(self):

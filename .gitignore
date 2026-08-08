@@ -27,3 +27,10 @@ ENV/
 
 # Claude Code per-user local overrides
 .claude/settings.local.json
+
+# Generated every cycle from the ledger and published to the ops-log branch
+# (scope.publish_branch), not to main. Keeping them here is what stops a code
+# branch that outlives a cycle from colliding with a regeneration nobody made
+# by hand. run-cycle.sh stages them with `git add -f` into a throwaway index.
+docs/
+reports/

@@ -548,7 +548,7 @@ def collect_deploy(rep: Report, con, cfg: dict) -> None:
                                "halt" if down > cap else "warn"))
 
 
-def collect_git(rep: Report) -> None:
+def collect_git(rep: Report, cfg: dict) -> None:
     def git(*args: str) -> str:
         return subprocess.run(("git", *args), capture_output=True, text=True,
                               timeout=10, check=True).stdout.strip()
@@ -573,11 +573,33 @@ def collect_git(rep: Report) -> None:
     # holds no token and cannot fetch for itself. That staleness is acceptable
     # precisely because the question is "did the previous cycle's push land",
     # and the previous cycle is what set this ref.
-    try:
-        ahead = int(subprocess.run(
-            ("git", "rev-list", "--count", "refs/remotes/origin/main..HEAD"),
-            capture_output=True, text=True, timeout=10, check=True).stdout.strip())
-    except Exception:  # noqa: BLE001
+    def unpushed(local: str, remote: str) -> int | None:
+        try:
+            return int(subprocess.run(
+                ("git", "rev-list", "--count", f"{remote}..{local}"),
+                capture_output=True, text=True, timeout=10, check=True).stdout.strip())
+        except Exception:  # noqa: BLE001
+            return None
+
+    # The rendered log lives on its own branch, so "is the trail offsite" is two
+    # questions now. The publish branch is the one that matters most day to day:
+    # main only moves when code changes, while that branch takes a commit every
+    # cycle and is what log.undra.nu serves.
+    pub = cfg.get("scope", {}).get("publish_branch", "ops-log")
+    pub_ahead = unpushed(f"refs/heads/{pub}", f"refs/remotes/origin/{pub}")
+    if pub_ahead:
+        # Fixed key, not f"unpushed_{pub}_commits": render() prints only the
+        # keys named in its group table, so a computed key would be dropped on
+        # the floor without a word.
+        rep.add(Fact("unpushed_log_commits", pub_ahead, source=f"git:{pub}",
+                     note="the public operations log has stopped updating"))
+        rep.breaches.append(Breach(
+            "trail.publish_branch",
+            f"{pub_ahead} commit(s) on {pub} are not on the remote; "
+            f"the public log is stale", "warn"))
+
+    ahead = unpushed("HEAD", "refs/remotes/origin/main")
+    if ahead is None:
         rep.add(Fact("git_unpushed_commits", None, UNKNOWN, "git",
                      "no remote-tracking ref — cannot tell whether the trail is offsite"))
         return
@@ -649,7 +671,7 @@ def render(rep: Report, cfg: dict) -> str:
         "REVENUE": ("arms_length_payments", "arms_length_gross_usd",
                     "related_party_payments"),
         "CODE": ("git_head", "git_branch", "git_uncommitted_files",
-                 "git_unpushed_commits"),
+                 "git_unpushed_commits", "unpushed_log_commits"),
     }
     by_key = {f.key: f for f in rep.facts}
     for title, keys in groups.items():
@@ -729,7 +751,7 @@ def main() -> int:
                lambda: collect_work(rep, con),
                lambda: collect_revenue(rep, con),
                lambda: collect_deploy(rep, con, cfg),
-               lambda: collect_git(rep)):
+               lambda: collect_git(rep, cfg)):
         result = safe(fn, "collector", "internal")
         if isinstance(result, Fact):          # collector blew up entirely
             rep.add(result)

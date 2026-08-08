@@ -127,7 +127,14 @@ approval_channel = "telegram"
 # publish without an approval token applies ONLY to these channels, and only to
 # output of the log generator. Adding a channel here is a deliberate act.
 publish_channels = ["github-pages"]
-publish_dir      = "./docs"           # GitHub Pages serves /docs on the default branch
+publish_dir      = "./docs"
+# The rendered log and the situation reports live on their own branch, so that
+# a regeneration every four hours cannot collide with a code branch that
+# outlives a cycle. GitHub Pages serves this branch at /docs. Changing the name
+# here changes it in run-cycle.sh and situation_report.py; it does NOT change
+# the Pages setting, which is repository configuration and has to be moved by
+# hand.
+publish_branch   = "ops-log"           # GitHub Pages serves /docs on the default branch
 # Where the log is actually reachable. This is NOT necessarily allowed_domains[0]:
 # the product lives on undra.nu, the log may live on a subdomain, a path, or
 # github.io. RSS guids are built from this, so a wrong value means dead links.

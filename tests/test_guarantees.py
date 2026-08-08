@@ -413,6 +413,58 @@ class LlmTest(unittest.TestCase):
         self.assertGreaterEqual(FALLBACK_PRICING[1], worst_out)
 
 
+class QuotaCauseTest(unittest.TestCase):
+    """The loop may say the free key stopped. It may not say why.
+
+    The API returns the same 429 body for a model being off-tier, a per-minute
+    limit and a spent daily quota, so nothing downstream can recover the cause.
+    Until 2026-08-08 the fallback path asserted an exhausted daily allowance
+    anyway; that reached the Operator as measurement and the build record as
+    fact, and the ledger contradicts it — cycles 22-26 served 2, 2, 1, 13 and 9
+    free-key calls before falling back.
+    """
+
+    def test_detector_reports_only_that_backoff_failed(self):
+        from runner.llm import exhausted_after_backoff
+        self.assertTrue(exhausted_after_backoff(Exception("429 RESOURCE_EXHAUSTED")))
+        self.assertTrue(exhausted_after_backoff(Exception("resource_exhausted")))
+        self.assertFalse(exhausted_after_backoff(Exception("500 internal")))
+
+    def test_the_name_that_claimed_a_cause_is_gone(self):
+        """`is_quota_exhausted` read as a finding at every call site. A function
+        whose name states a conclusion it cannot reach will be believed."""
+        import runner.llm as llm
+        self.assertFalse(hasattr(llm, "is_quota_exhausted"))
+
+    def test_no_dead_constant_advertising_a_distinction_never_made(self):
+        """_DAILY_QUOTA_HINTS was defined, documented as separating daily limits
+        from per-minute ones, and referenced by nothing. It is the most likely
+        origin of the belief this class exists to prevent."""
+        import runner.llm as llm
+        self.assertFalse(hasattr(llm, "_DAILY_QUOTA_HINTS"))
+
+    def test_the_digest_can_still_find_the_event_it_reports_on(self):
+        """The digest used to match the literal phrase 'free-tier quota
+        exhausted'. Correcting that wording would have silently stopped the
+        match, and the digest would have reported 'still serving' through every
+        fallback with no error anywhere. Match on what the emitter actually
+        writes, and keep the two in step."""
+        digest_src = (Path(__file__).resolve().parents[1] / "runner/digest.py").read_text()
+        cycle_src = (Path(__file__).resolve().parents[1] / "runner/cycle.py").read_text()
+
+        start = digest_src.index("falling back to the paid key")
+        needle = digest_src[start:digest_src.index("%", start)]
+
+        collapsed = " ".join(cycle_src.split())
+        # assertTrue, not assertIn: assertIn prints both operands on failure,
+        # and one of them is the whole of cycle.py.
+        self.assertTrue(
+            needle in collapsed,
+            f"digest.py searches events for {needle!r}, but cycle.py no longer "
+            f"emits that phrase. Fallbacks would vanish from the digest with no "
+            f"error anywhere. Keep the two in step or match on something stabler.")
+
+
 class OffsiteTrailTest(unittest.TestCase):
     """The audit trail is a deliverable, and committing it is not saving it.
 

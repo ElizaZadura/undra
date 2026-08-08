@@ -85,13 +85,24 @@ def build(ledger, cfg) -> str:
     unknown = con.execute(
         "SELECT COUNT(*) FROM llm_usage WHERE (key_role IS NULL OR key_role='') "
         "AND at LIKE ?", (today + "%",)).fetchone()[0]
-    exhausted = con.execute(
-        "SELECT MIN(at) FROM events WHERE at LIKE ? AND "
-        "message LIKE '%free-tier quota exhausted%'", (today + "%",)).fetchone()[0]
+    # Matched on source and level, not on the message text.
+    #
+    # This query used to look for the literal phrase "free-tier quota exhausted".
+    # When that wording was corrected on 2026-08-08 — it asserted a cause nobody
+    # had measured — this line would have silently stopped matching and the
+    # digest would have reported "still serving" through every fallback, with no
+    # error anywhere. A report coupled to the prose of the thing it reports on
+    # breaks the moment the prose is right.
+    fellback = con.execute(
+        "SELECT MIN(at) FROM events WHERE at LIKE ? AND source='llm' "
+        "AND level='warn' AND message LIKE '%falling back to the paid key%'",
+        (today + "%",)).fetchone()[0]
     if free or paid or unknown:
         line = f"  free tier: {free} call(s) today"
-        if exhausted:
-            line += f", gave out at {exhausted[11:16]}"
+        if fellback:
+            # Deliberately not "gave out": the reason the free key stopped is
+            # not knowable from the error it returns (see llm.py).
+            line += f", stopped serving at {fellback[11:16]}"
         else:
             line += ", still serving"
         line += f" · paid: {paid}"

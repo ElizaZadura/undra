@@ -369,21 +369,34 @@ def has_key(role: str) -> bool:
         return False
 
 
-# Wording that means the DAILY quota is gone rather than the per-minute one.
-# Distinct from classify_429(): that decides retry-or-not, this decides
-# switch-keys-or-not. A per-minute limit resolves in seconds and the backoff
-# handles it; a spent daily quota does not resolve until Google's reset.
-_DAILY_QUOTA_HINTS = ("per day", "perday", "requests per day", "daily limit",
-                      "generaterequestsperdayperprojectpermodel")
+def exhausted_after_backoff(exc: Exception) -> bool:
+    """True when a 429 has survived the full retry schedule. Nothing more.
 
+    Renamed from `is_quota_exhausted` on 2026-08-08, because that name was a
+    claim the function cannot support and the rest of the system believed it.
+    Callers switched to the paid key and then told the Operator *why* — that a
+    daily allowance had run out — which was never measured and is not knowable
+    here. The module docstring above already records that the free tier returns
+    identical wording for an off-tier model and a per-minute limit; a body that
+    carries no information about the cause cannot be read for the cause.
 
-def is_quota_exhausted(exc: Exception) -> bool:
-    """True when a 429 looks like an exhausted allowance rather than pacing.
+    The ledger settles it. Cycles 22-26 served 2, 2, 1, 13 and 9 free-key calls
+    before falling back. A daily allowance does not refill four hours after
+    emptying, so whatever this detects, it is not reliably that.
 
-    Deliberately broad: after MAX retries with correct backoff, a 429 that is
-    still failing is not a pacing problem whatever it calls itself. The cost of
-    a false positive is one cycle billed to the paid key at about five cents.
-    The cost of a false negative is a dead cycle and a stalled loop overnight.
+    Deleted along with the rename: a `_DAILY_QUOTA_HINTS` tuple of phrases like
+    "requests per day", which was defined, documented as distinguishing daily
+    limits from per-minute ones, and **never referenced by any code**. It was
+    dead when written. Anyone reading this module would reasonably conclude the
+    distinction was being made; it never was, and that misreading is the most
+    likely origin of the daily-quota story this rename removes.
+
+    What the function actually means: after MAX attempts with correct backoff,
+    a 429 that is still failing will not be fixed by waiting a little longer
+    inside this cycle, whatever its cause. That is enough to justify switching
+    keys, and switching keys is all any caller does with it. The asymmetry is
+    unchanged — a false positive costs one cycle on the paid key, about five
+    cents; a false negative costs the cycle and stalls the loop overnight.
     """
     text = str(exc).lower()
     if "429" not in text and "resource_exhausted" not in text:

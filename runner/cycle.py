@@ -223,21 +223,36 @@ def run(*, stub_model: bool = False, use_telegram: bool = True) -> int:
             handoff = _agent_loop(ctx, client, model, report, plan,
                                   stub_model=stub_model)
         except llm.TransientModelError as exc:
-            # The free tier's daily allowance is gone. Retrying with backoff
-            # cannot fix that — it does not reset until Google's clock rolls
-            # over, which can be many hours away, and the cycles in between
-            # would all die the same way. The paid key is already in this
-            # container for the planning call, so fall back to it rather than
-            # lose the night. Logged loudly: the free-tier shortfall is a real
-            # finding about the cost model and must not be silently absorbed.
-            if stub_model or not llm.is_quota_exhausted(exc) \
+            # The free key has stopped serving this cycle and backoff has not
+            # recovered it. Fall back to the paid key rather than lose the run —
+            # it is already in this container for the planning call.
+            #
+            # What this code must NOT do is say why.
+            #
+            # Until 2026-08-08 both the event and the handoff below asserted that
+            # the free tier's *daily allowance* was exhausted. That was never
+            # measured. It cannot be: the API returns the same 429 body for a
+            # model being off-tier, a per-minute limit, and a spent daily quota,
+            # which is the finding recorded at the top of llm.py — so the very
+            # classifier this branch depends on is documented as unable to tell
+            # those apart. The ledger contradicts the daily reading outright:
+            # cycles 22-26 saw 2, 2, 1, 13 and 9 free-key calls before falling
+            # back, and an allowance does not refill four hours after emptying.
+            #
+            # The label survived two days of reports to the Operator and reached
+            # the build record as fact, because a number that enters through
+            # instrumentation acquires the authority of measurement. Say what
+            # happened; leave the cause to whoever can actually observe it.
+            if stub_model or not llm.exhausted_after_backoff(exc) \
                     or not llm.has_key("planning"):
                 raise
             led.event("warn", "llm",
-                      f"free-tier quota exhausted on {model}; falling back to the "
-                      f"paid key for the rest of this cycle. Free-tier capacity is "
-                      f"smaller than HANDOFF.md §4 assumed — this costs real money "
-                      f"and should be reviewed. Error: {str(exc)[:200]}")
+                      f"free key stopped serving {model} and did not recover after "
+                      f"backoff; falling back to the paid key for the rest of this "
+                      f"cycle. Cause unknown — the API returns the same 429 for a "
+                      f"tier restriction, a per-minute limit and a spent daily "
+                      f"quota. This costs real money and should be reviewed. "
+                      f"Error: {str(exc)[:200]}")
             paid_client = llm.Gemini(
                 llm.api_key("planning"), role="planning",
                 on_usage=lambda u: led.llm_usage(
@@ -249,8 +264,10 @@ def run(*, stub_model: bool = False, use_telegram: bool = True) -> int:
             )
             handoff = _agent_loop(ctx, paid_client, model, report, plan,
                                   stub_model=False)
-            handoff = ("[This cycle fell back to the paid API key: the free tier's "
-                       "daily quota was exhausted.] " + handoff)
+            handoff = ("[This cycle fell back to the paid API key: the free key "
+                       "stopped serving and did not recover after backoff. The "
+                       "cause is not knowable from the error — do not report it "
+                       "as an exhausted daily quota.] " + handoff)
     except Halted:
         cyc.note_halted()
         handoff = ("Halt flag was set mid-cycle. Stopped immediately without "

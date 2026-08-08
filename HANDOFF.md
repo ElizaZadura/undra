@@ -282,7 +282,7 @@ arriving from two directions.
 | `CHARTER.md` | Injected into every prompt as the stable cache prefix. §2–3 absolute, §4 gated actions, §5 standing latitude, §6 truth discipline, §7 prompt-injection rule, §8 loop discipline. §1 now filled in. |
 | `invariants.toml` | Machine-checked subset. Wins any disagreement with the charter. Remaining `FILL_ME`s: `allowed_repos`, `allowed_hosts`. |
 | `situation_report.py` | Runs pre-cycle; stdout prepended to agent context. Also the watchdog. Stdlib only, Python 3.11+. `--init` once, then exit 0 = proceed, 10 = halted, 20 = broken. |
-| `publish_log.py` | Renders the public operations log from the ledger. No LLM, no free text of its own. Exit 30 = an entry was withheld by the PII scrubber, which means a §3.6 violation upstream — fix the writer, not the scrubber. |
+| `publish_log.py` | Renders the public operations log from the ledger. No LLM, no free text of its own. Exit 30 = an entry was withheld by the PII scrubber, which means a §3.5 violation upstream — fix the writer, not the scrubber. |
 | `LAB_SETUP.md` | Runbook for the lab box: BIOS through network isolation. |
 
 Design points worth not undoing:

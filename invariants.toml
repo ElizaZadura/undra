@@ -55,8 +55,22 @@ max_cycles_without_progress = 3
 #
 # max_hours_without_cycle must exceed cycle_interval_hours or it fires on every
 # normal gap. Tighter detection therefore means MORE cycles, not a lower ceiling.
-# 4-hour interval => 6 scheduled cycles/day => ~180 API requests/day, well inside
-# the free tier.
+# 4-hour interval => 6 scheduled cycles/day => ~180 API requests/day.
+#
+# NOTE (measured 2026-08-06/07, corrected 2026-08-08): that is NOT "well inside
+# the free tier", as this comment claimed until now. The free tier gave out
+# after ~30 requests, then ~45 the next day, then one. The loop therefore runs
+# mostly on paid capacity and falls back to GOOGLE_API_KEY_PAID mid-cycle when
+# the free key is exhausted. Do not re-derive a free-tier budget from this file:
+# the original figure is what shaped the spend caps, the model routing and the
+# two-project split, and all three were sized against a quota that is not there.
+#
+# The margin here is two hours, which is narrower than it looks but adequate:
+# hours_since_cycle is only evaluated when a cycle starts, so it reads ~4.0
+# against a cap of 6 on a healthy loop and only exceeds it when a cycle is
+# genuinely missed. Observed cycle duration is 1.6–4.1 minutes (2026-08-08), so
+# a long-running cycle is not currently a plausible cause of a false positive.
+# The breach is "warn" severity in situation_report.py and cannot halt the loop.
 cycle_interval_hours             = 4
 max_hours_without_cycle          = 6
 max_hours_without_ledger_write   = 6
@@ -95,7 +109,10 @@ PII_EXPORT             = "abandon_task"
 LEGAL_OR_MEDICAL_CLAIM = "halt"          # should never fire; if it does, stop everything
 
 [scope]
-# Anything not listed here is out of bounds. See CHARTER.md §3.10.
+# Anything not listed here is out of bounds. CHARTER.md v2 collapsed §3 to six
+# prohibitions and moved scope into the "What the harness already handles" note
+# at the end of that section: scope is now a property of the system (Docker
+# networks, a repo-scoped token) rather than a rule to be obeyed.
 allowed_repos    = ["ElizaZadura/undra"]
 allowed_hosts    = ["undra-dteqnu36ia-lz.a.run.app"]   # deployed 2026-08-07
 # Path the watchdog polls to decide deploy_health. The app serves /api/health,
@@ -150,4 +167,8 @@ planning_fallback = "gemini-3.6-flash"       # If the planning model errors or
                                              # already was), and losing the daily
                                              # plan is not worth stopping the run.
 max_planning_calls_per_day = 2
-user_data_key    = "paid"     # never "free" — see CHARTER.md §3.7
+user_data_key    = "paid"     # never "free". CHARTER.md §3's harness note:
+                              # key separation is structural, not forbidden —
+                              # the free-tier key is absent from the container
+                              # that handles user data, so this line records a
+                              # fact about the deployment rather than a rule.

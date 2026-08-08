@@ -12,10 +12,10 @@ Consequences of that design worth keeping:
   - The public log and the private truth are the same rows. There is no separate
     narrative to drift, and no way to publish a flattering version.
   - Because agent-written fields (decision summaries, rationales, handoffs) are
-    published verbatim, §3.6 binds them. The scrubber below is belt-and-braces,
+    published verbatim, §3.5 binds them. The scrubber below is belt-and-braces,
     not the primary control.
   - A scrubber hit means an agent wrote personal data into a ledger field, which
-    is a §3.6 violation. The entry is withheld entirely, an error event is
+    is a §3.5 violation. The entry is withheld entirely, an error event is
     logged, and the exit code is non-zero. Fail closed, then tell someone.
 
 Article 50 marking: every page carries a visible AI-authorship banner plus
@@ -409,7 +409,7 @@ def main() -> int:
     if violations:
         print("\nWITHHELD — possible personal data in ledger free-text fields.",
               file=sys.stderr)
-        print("This is a CHARTER.md §3.6 violation upstream. Fix the writer, "
+        print("This is a CHARTER.md §3.5 violation upstream. Fix the writer, "
               "not the scrubber.", file=sys.stderr)
         for v in violations:
             print(f"  {v}", file=sys.stderr)

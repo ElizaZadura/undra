@@ -17,7 +17,7 @@
 #
 # Exit codes from publish_log.py matter: 30 means an entry was WITHHELD because
 # the scrubber found what may be personal data in a ledger free-text field.
-# That is a §3.6 violation upstream — the fix is the writer, not the scrubber —
+# That is a §3.5 violation upstream — the fix is the writer, not the scrubber —
 # so it is surfaced loudly rather than swallowed.
 
 set -uo pipefail
@@ -111,9 +111,6 @@ if [ "${UNDRA_PUSH:-0}" = "1" ]; then
     # trail sat on one disk for twelve hours. Nothing self-corrected, because
     # nothing was trying to.
     #
-    # Rebase rather than merge: cycle commits are a deterministic render of the
-    # ledger, so replaying them on the new base is exactly right and leaves no
-    # merge commits in what should read as a linear operations log.
     # Fetch into refs/remotes/origin/main, not just FETCH_HEAD. The situation
     # report runs inside the container with no token and cannot fetch for
     # itself, so this ref is its only view of the remote; leaving it stale
@@ -138,6 +135,9 @@ if [ "${UNDRA_PUSH:-0}" = "1" ]; then
         unset REMOTE GITHUB_PERSONAL_ACCESS_TOKEN
         exit "$CYCLE_RC"
       fi
+      # Rebase rather than merge: cycle commits are a deterministic render of
+      # the ledger, so replaying them on the new base is exactly right, and it
+      # leaves no merge commits in what should read as a linear operations log.
       if git rebase -q refs/remotes/origin/main 2>&1 | scrub; then
         log "rebased onto remote"
         ./bin/ledger-note event info git_push \

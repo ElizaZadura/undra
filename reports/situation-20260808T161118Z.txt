@@ -1,5 +1,5 @@
 ==============================================================================
-SITUATION REPORT — 2026-08-07T18:21:58+00:00
+SITUATION REPORT — 2026-08-08T16:11:18+00:00
 project: undra   invariants v1
 This is the only source of operational fact for this cycle. (CHARTER.md §6.2)
 ==============================================================================
@@ -8,13 +8,13 @@ This is the only source of operational fact for this cycle. (CHARTER.md §6.2)
 
 -- CLOCK ---------------------------------------------------------------------
   deadline_utc: 2026-08-17T20:00:00+00:00
-  hours_remaining: 241.6
+  hours_remaining: 219.8
 
 -- BUDGET --------------------------------------------------------------------
-  spend_total_usd: 3.07  [cap 60.00]
-  spend_llm_usd: 3.07
+  spend_total_usd: 4.58  [cap 60.00]
+  spend_llm_usd: 4.58
   spend_other_usd: 0.00
-  budget_remaining_usd: 56.93
+  budget_remaining_usd: 55.42
 
 -- RATE COUNTERS -------------------------------------------------------------
   outbound_last_hour: 0  [max 3]
@@ -25,8 +25,8 @@ This is the only source of operational fact for this cycle. (CHARTER.md §6.2)
 
 -- LIVENESS ------------------------------------------------------------------
   halt_flag: False
-  hours_since_ledger_write: 0.8  [max 6]
-  hours_since_cycle: 0.9  [max 6]
+  hours_since_ledger_write: 2.7  [max 6]
+  hours_since_cycle: 4.0  [max 6]
   deploy_health: HTTP 200
 
 -- REVENUE -------------------------------------------------------------------
@@ -35,21 +35,16 @@ This is the only source of operational fact for this cycle. (CHARTER.md §6.2)
   related_party_payments: 0  [must be reported separately in the submission]
 
 -- CODE ----------------------------------------------------------------------
-  git_head: 856c24e
+  git_head: 65874ad
   git_branch: main
-  git_uncommitted_files: 1  [uncommitted work is invisible to the audit trail]
+  git_uncommitted_files: 0
+  git_unpushed_commits: 0
 
 -- OPEN OBJECTIVES (priority order) ------------------------------------------
-  P1 Merge PR #5 (the web application MVP). CI passes on all three jobs and it is mergeable. Read the diff first, then merge_pull_request.
-  P2 Fix the refusal guardrail so it also covers image-only queries. app/main.py runs check_query_guardrails only when user_text is present, so a photographed letter with no caption reaches the model unchecked. That is the product's headline path and CHARTER.md 3.3 is absolute. Must be closed BEFORE any deployment.
-  P4 Build pre-arrival student web application MVP
-  P5 Configure deployment host and setup production deployment
-  P6 Re-verify XPRIZE rules regarding Vertex AI and Gemini API usage requirements
-  P7 Implement refuse-and-route safety guardrails for legal, tax, medical, and immigration queries
-  P11 Draft the Devpost submission from ledger facts only — revenue by month, expenses, marketing spend, API usage, and the 500-1000 word human-vs-AI narrative. Drafting is free (CHARTER.md 5); the Operator files it, since Devpost is login-only. Do NOT start before the product is deployed: a draft written against UNKNOWNs invites the overclaim that 6.6 forbids.
+  none — the first task of this cycle is to propose an objective list
 
 -- PENDING APPROVALS (do not block on these) ---------------------------------
-  #2 EXTERNAL_MESSAGE [digest] deadline=2026-08-08T04:15:25.887677+00:00 on_timeout=Proceed with pre-deployment documentation and verification tasks while awaiting Operator host configuration and manual guardrail patch.
+  none
 
 -- OPEN QUESTIONS ------------------------------------------------------------
   #1 XPRIZE rules may restrict or require particular Google AI services (possible Vertex AI clause). Re-verify against the current rules page before the submission narrative claims which services were used. HANDOFF.md section 2 already says to re-verify the rules summary before submitting.
@@ -57,15 +52,21 @@ This is the only source of operational fact for this cycle. (CHARTER.md §6.2)
   #6 Future improvement, not urgent: switch GitHub Pages from legacy branch-deploy to a GitHub Actions build-and-deploy workflow. Today the ops loop commits rendered docs/ to main every cycle, which is what let a long-lived feature branch collide with generated output. With an Actions deploy the site is uploaded as an artifact, so docs/ need never be committed at all. The catch: the site is rendered from ledger.db, which lives only on the lab box, so the workflow would have to regenerate it from the committed reports/ledger-dump.json instead — publish_log.py currently reads sqlite, not the JSON dump. Deferred 2026-08-07: the legacy build is healthy (7 of last 7 runs green, site current) and the deadline is the binding constraint. Operator's idea.
 
 -- LAST 5 DECISIONS (newest first) -------------------------------------------
-  2026-08-07T16:15 Re-verified XPRIZE competition rules regarding LLM and Google Cloud platform usage.
-  2026-08-07T16:15 Escalate Jules task stall for P2 (image-only refusal guardrail) to Operator via request_human and request deployment host setup for P5.
-  2026-08-07T12:14 File Jules task to extend refusal guardrails to cover image-only queries in app/main.py and add unit tests.
-  2026-08-07T12:12 Merged pull request #5: Add the undra web application MVP
-  2026-08-07T12:11 [irreversible] Merge PR #5 into main to land the web application MVP.
+  2026-08-08T12:14 Marked objectives 8, 9, and 10 complete as PR #5 and PR #6 are merged on main and tested.
+  2026-08-08T12:13 Completed objective: Configure deployment host and setup production deployment (waiting on Operator / Cloud Run)
+  2026-08-08T12:13 Completed objective: Fix the refusal guardrail so it also covers image-only queries. app/main.py runs check_query_guardrails only when user_text is present, so a photograp
+  2026-08-08T12:13 Completed objective: Merge PR #5 (the web application MVP). CI passes on all three jobs and it is mergeable. Read the diff first, then merge_pull_request.
+  2026-08-08T12:11 Completed objective: Configure deployment host and setup production deployment
 
 -- PREVIOUS CYCLE HANDOFF ----------------------------------------------------
-  cycle #20 (ok) 2026-08-07T17:26
-  Operator ran jules_land_task by hand to land the stranded guardrail fix.
+  cycle #26 (ok) 2026-08-08T12:10
+  [This cycle fell back to the paid API key: the free tier's daily quota was exhausted.] Cycle #26 summary:
+- Identified that open objectives P1 (Merge PR #5) and P2/P3 (Fix refusal guardrail for image-only queries) had already been successfully merged and verified on main (PR #5 and PR #6 merged, test suite in `tests/test_app_guardrails.py` green).
+- Successfully closed stale open objectives (IDs 8, 9, 10) in the ledger database to align system state with git state.
+- Verified repository files on main branch. All guardrails (text and image-only refusal categories) and app files are present and tested.
+- Pending request #3 (human Operator deployment to Cloud Run) remains open until 16:12 UTC deadline.
+- Staging service liveness check returns HTTP 200.
+- Next cycle: Continue monitoring for Operator deployment response or timeout default action (preparing Devpost submission narrative/draft).
 
 ==============================================================================
 END OF REPORT. Anything not above is not known to you.

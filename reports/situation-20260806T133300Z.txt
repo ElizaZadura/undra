@@ -1,0 +1,67 @@
+==============================================================================
+SITUATION REPORT — 2026-08-06T13:33:00+00:00
+project: undra   invariants v1
+This is the only source of operational fact for this cycle. (CHARTER.md §6.2)
+==============================================================================
+
+-- INVARIANTS: all clear -----------------------------------------------------
+
+-- CLOCK ---------------------------------------------------------------------
+  deadline_utc: 2026-08-17T20:00:00+00:00
+  hours_remaining: 270.4
+
+-- BUDGET --------------------------------------------------------------------
+  spend_total_usd: 0.00  [cap 60.00]
+  spend_llm_usd: 0.00
+  spend_other_usd: 0.00
+  budget_remaining_usd: 60.00
+
+-- RATE COUNTERS -------------------------------------------------------------
+  outbound_last_hour: 0  [max 3]
+  outbound_total: 0  [max 40]
+  deploys_last_hour: 0
+  cycles_last_24h: 0
+  unproductive_cycles_24h: 0
+
+-- LIVENESS ------------------------------------------------------------------
+  halt_flag: False
+  hours_since_ledger_write: 0.3  [max 6]
+  hours_since_cycle: UNKNOWN (no rows yet — first run?)
+  deploy_health: UNKNOWN (no host configured yet — nothing is deployed)
+
+-- REVENUE -------------------------------------------------------------------
+  arms_length_payments: 0
+  arms_length_gross_usd: 0.00
+  related_party_payments: 0  [must be reported separately in the submission]
+
+-- CODE ----------------------------------------------------------------------
+  git_head: b12aa36
+  git_branch: main
+  git_uncommitted_files: 4  [uncommitted work is invisible to the audit trail]
+
+-- OPEN OBJECTIVES (priority order) ------------------------------------------
+  none — the first task of this cycle is to propose an objective list
+
+-- PENDING APPROVALS (do not block on these) ---------------------------------
+  none
+
+-- OPEN QUESTIONS ------------------------------------------------------------
+  none
+
+-- LAST 5 DECISIONS (newest first) -------------------------------------------
+  none
+
+-- PREVIOUS CYCLE HANDOFF ----------------------------------------------------
+  no previous cycle — this is cycle 1
+
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+UNKNOWN FACTS — you do not know these. Do not infer them, do not
+assume the favourable case, do not reuse a value from a past cycle.
+An unknown revenue figure is not zero. (CHARTER.md §6.3)
+!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!
+  hours_since_cycle: UNKNOWN — no rows yet — first run? (source: ledger)
+  deploy_health: UNKNOWN — no host configured yet — nothing is deployed (source: config)
+
+==============================================================================
+END OF REPORT. Anything not above is not known to you.
+==============================================================================

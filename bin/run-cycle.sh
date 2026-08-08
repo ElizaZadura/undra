@@ -122,10 +122,16 @@ if [ "${UNDRA_PUSH:-0}" = "1" ]; then
     BEHIND=$(git rev-list --count HEAD..refs/remotes/origin/main 2>/dev/null || echo 0)
     if [ "${BEHIND:-0}" -gt 0 ]; then
       log "remote is ${BEHIND} commit(s) ahead; rebasing before push"
-      if [ -n "$(git status --porcelain)" ]; then
+      # --untracked-files=no is deliberate. Rebase steps over untracked files
+      # without touching them, and step 2 routinely leaves some behind — a
+      # situation report written after `git add reports` ran, say. Counting
+      # those as "dirty" would skip the rebase and exit before the push, which
+      # is the very failure this block exists to prevent. Tracked modifications
+      # genuinely do block a rebase, so those still stop us.
+      if [ -n "$(git status --porcelain --untracked-files=no)" ]; then
         # Refuse to rebase over uncommitted work rather than stash it. A stash
         # that fails to pop is a silent data loss, and this runs unattended.
-        log "uncommitted changes present; not rebasing"
+        log "uncommitted tracked changes present; not rebasing"
         ./bin/ledger-note event error git_push \
           "remote is ${BEHIND} commit(s) ahead but the working tree is dirty, so the rebase was skipped and the push will be rejected. Needs a human at the box." >/dev/null
         notify "[undra] Cannot push: remote is ${BEHIND} commit(s) ahead and there are uncommitted changes on the box, so the rebase was skipped. The audit trail is local-only until this is cleared by hand."

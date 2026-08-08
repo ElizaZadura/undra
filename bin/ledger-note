@@ -1,0 +1,99 @@
+#!/usr/bin/env python3
+"""Record an event, or raise a human request, from outside the container.
+
+`bin/run-cycle.sh` does three things the agent deliberately never does itself:
+render the log, commit, and push (AGENTS.md, the ordering comment at the top of
+that script). Until 2026-08-08 those three steps wrote to journald and to
+Telegram and to nothing else, which made them invisible to every mechanism
+built to surface trouble — the situation report, the stuck-work detector, the
+digest and `human_requests` all read `ledger.db` and only `ledger.db`.
+
+The consequence was observed rather than theorised: PR #6 was merged on GitHub,
+remote main moved two commits ahead, and the bare `git push` in step 4 was
+rejected as non-fast-forward on four consecutive cycles. The audit trail stayed
+on one disk for twelve hours. Coral was told "working tree clean, 0 uncommitted
+files" each time, which was true, and read the merged PR straight from GitHub,
+so nothing it could see was wrong. No breach fired and no request was raised,
+because the only witness to the failure was a line in journald.
+
+This script closes that hole. Anything the pipeline does outside the agent gets
+a row like everything else.
+
+    bin/ledger-note event  <level> <source> <message>
+    bin/ledger-note request <kind> <payload> [--priority P] [--default-action A]
+
+`request` is idempotent by (kind, payload): a condition that recurs every four
+hours must not mint a fourth pending request the Operator has to dismiss three
+times. It prints the request id, new or existing, and exits 0 either way; exit
+3 means the request already existed and nothing was created, which lets the
+caller decide whether to re-notify.
+"""
+
+from __future__ import annotations
+
+import sys
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from runner.ledger import Ledger  # noqa: E402
+
+DB = str(Path(__file__).resolve().parent.parent / "ledger.db")
+
+
+def main(argv: list[str]) -> int:
+    if len(argv) < 2:
+        print(__doc__, file=sys.stderr)
+        return 2
+
+    mode = argv[1]
+    led = Ledger(DB)
+
+    if mode == "event":
+        if len(argv) < 5:
+            print("usage: ledger-note event <level> <source> <message>",
+                  file=sys.stderr)
+            return 2
+        led.event(argv[2], argv[3], " ".join(argv[4:]))
+        return 0
+
+    if mode == "request":
+        if len(argv) < 4:
+            print("usage: ledger-note request <kind> <payload> "
+                  "[--priority P] [--default-action A]", file=sys.stderr)
+            return 2
+        kind, payload = argv[2], argv[3]
+        rest = argv[4:]
+        priority = _opt(rest, "--priority", "high")
+        default_action = _opt(rest, "--default-action", "abandon_task")
+
+        # Deduplicate on the payload, not the kind. Two different pushes failing
+        # for two different reasons are two requests; the same one failing again
+        # four hours later is the same request, still unanswered.
+        existing = led.con.execute(
+            "SELECT id FROM human_requests WHERE kind=? AND payload=? "
+            "AND status='pending' ORDER BY at DESC LIMIT 1",
+            (kind, payload)).fetchone()
+        if existing:
+            print(existing["id"])
+            return 3
+
+        rid = led.request_human(kind=kind, payload=payload, priority=priority,
+                                deadline=None, default_action=default_action)
+        print(rid)
+        return 0
+
+    print(f"unknown mode {mode!r}", file=sys.stderr)
+    return 2
+
+
+def _opt(args: list[str], name: str, default: str) -> str:
+    if name in args:
+        i = args.index(name)
+        if i + 1 < len(args):
+            return args[i + 1]
+    return default
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

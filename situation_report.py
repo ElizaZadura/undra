@@ -561,6 +561,50 @@ def collect_git(rep: Report) -> None:
     except Exception as exc:  # noqa: BLE001
         rep.add(Fact("git_head", None, UNKNOWN, "git", str(exc)[:120]))
 
+    # Committed is not the same as offsite.
+    #
+    # Until 2026-08-08 this function reported a clean tree and stopped there,
+    # which is how four consecutive cycles were told "0 uncommitted files" while
+    # twelve hours of commits sat on one disk, rejected by every push because a
+    # merged pull request had moved the remote ahead. The tree was clean. The
+    # statement was true. It was also the wrong question.
+    #
+    # refs/remotes/origin/main is as of the last cycle's fetch — the container
+    # holds no token and cannot fetch for itself. That staleness is acceptable
+    # precisely because the question is "did the previous cycle's push land",
+    # and the previous cycle is what set this ref.
+    try:
+        ahead = int(subprocess.run(
+            ("git", "rev-list", "--count", "refs/remotes/origin/main..HEAD"),
+            capture_output=True, text=True, timeout=10, check=True).stdout.strip())
+    except Exception:  # noqa: BLE001
+        rep.add(Fact("git_unpushed_commits", None, UNKNOWN, "git",
+                     "no remote-tracking ref — cannot tell whether the trail is offsite"))
+        return
+
+    rep.add(Fact("git_unpushed_commits", ahead, source="git",
+                 note="" if not ahead else
+                      "committed locally but NOT offsite as of the last fetch"))
+    if ahead:
+        # One unpushed cycle is a push that has not happened yet; several is a
+        # push that cannot happen. The audit trail is the deliverable, so
+        # divergence gets stated as a breach rather than left as a number for
+        # the agent to notice on its own.
+        #
+        # Deliberately never "halt", however tempting the escalation looks. A
+        # halt-severity breach sets the halt flag and stops the loop until the
+        # Operator clears it by hand, and this is the one class of problem the
+        # agent cannot fix from inside the container — it holds no push token.
+        # Stopping all product work over it would turn a stalled backup into a
+        # stalled business. run-cycle.sh raises PUSH_BLOCKED for the cases that
+        # genuinely need a human; this line's job is to make sure no cycle can
+        # read its own state and come away believing the trail is safe.
+        rep.breaches.append(Breach(
+            "trail.offsite",
+            f"{ahead} commit(s) on this box are not on origin/main; the audit "
+            f"trail exists in one place only",
+            "warn"))
+
 
 # --------------------------------------------------------------------------- #
 # rendering
@@ -604,7 +648,8 @@ def render(rep: Report, cfg: dict) -> str:
                      "deploy_health", "hours_since_healthy_deploy"),
         "REVENUE": ("arms_length_payments", "arms_length_gross_usd",
                     "related_party_payments"),
-        "CODE": ("git_head", "git_branch", "git_uncommitted_files"),
+        "CODE": ("git_head", "git_branch", "git_uncommitted_files",
+                 "git_unpushed_commits"),
     }
     by_key = {f.key: f for f in rep.facts}
     for title, keys in groups.items():

@@ -13,10 +13,12 @@ Run:  python3 -m unittest discover -s tests -v
 
 from __future__ import annotations
 
+import inspect
 import sqlite3
 import sys
 import tempfile
 import unittest
+from datetime import datetime, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -409,6 +411,60 @@ class LlmTest(unittest.TestCase):
         worst_out = max(p[1] for p in PRICING.values())
         self.assertGreaterEqual(FALLBACK_PRICING[0], worst_in)
         self.assertGreaterEqual(FALLBACK_PRICING[1], worst_out)
+
+
+class OffsiteTrailTest(unittest.TestCase):
+    """The audit trail is a deliverable, and committing it is not saving it.
+
+    On 2026-08-08 a merged pull request moved origin/main ahead, every
+    subsequent push was rejected as non-fast-forward, and four consecutive
+    cycles were told "git_uncommitted_files: 0" — true, and no help at all.
+    Nothing in the report described the distance to the remote, so nothing
+    could breach.
+    """
+
+    def _report(self, ahead):
+        from unittest.mock import patch
+        import subprocess as sp
+        import situation_report as sr
+
+        rep = sr.Report(now=datetime.now(timezone.utc))
+        outs = {"rev-parse": "abc1234", "status": "",
+                "rev-list": str(ahead), "abbrev-ref": "main"}
+
+        def fake_run(args, **kw):
+            key = next((k for k in outs if k in args), "rev-parse")
+            return sp.CompletedProcess(args, 0, stdout=outs[key] + "\n", stderr="")
+
+        with patch.object(sr.subprocess, "run", side_effect=fake_run):
+            sr.collect_git(rep)
+        return rep
+
+    def test_unpushed_commits_are_reported_as_a_fact(self):
+        facts = {f.key: f.value for f in self._report(4).facts}
+        self.assertEqual(facts["git_unpushed_commits"], 4)
+
+    def test_a_synced_repo_raises_nothing(self):
+        self.assertEqual(self._report(0).breaches, [])
+
+    def test_divergence_raises_a_breach(self):
+        rules = [b.rule for b in self._report(2).breaches]
+        self.assertIn("trail.offsite", rules)
+
+    def test_divergence_never_halts_the_loop(self):
+        """The agent holds no push token, so halting it cannot fix this and
+        would stop all product work until the Operator cleared the flag by
+        hand. `Report.halted` is true for any halt-severity breach and
+        situation_report.py acts on it, so severity here is load-bearing."""
+        for ahead in (1, 3, 50):
+            rep = self._report(ahead)
+            self.assertFalse(rep.halted, f"{ahead} unpushed commits set the halt flag")
+
+    def test_the_fact_is_actually_rendered(self):
+        """A fact absent from render()'s group table is computed and dropped."""
+        import situation_report as sr
+        src = inspect.getsource(sr.render)
+        self.assertIn("git_unpushed_commits", src)
 
 
 if __name__ == "__main__":

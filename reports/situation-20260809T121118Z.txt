@@ -1,5 +1,5 @@
 ==============================================================================
-SITUATION REPORT — 2026-08-08T10:29:37+00:00
+SITUATION REPORT — 2026-08-09T12:11:18+00:00
 project: undra   invariants v1
 This is the only source of operational fact for this cycle. (CHARTER.md §6.2)
 ==============================================================================
@@ -8,25 +8,26 @@ This is the only source of operational fact for this cycle. (CHARTER.md §6.2)
 
 -- CLOCK ---------------------------------------------------------------------
   deadline_utc: 2026-08-17T20:00:00+00:00
-  hours_remaining: 225.5
+  hours_remaining: 199.8
 
 -- BUDGET --------------------------------------------------------------------
-  spend_total_usd: 4.00  [cap 60.00]
-  spend_llm_usd: 4.00
+  spend_total_usd: 5.97  [cap 60.00]
+  spend_llm_usd: 5.97
   spend_other_usd: 0.00
-  budget_remaining_usd: 56.00
+  budget_remaining_usd: 54.03
 
 -- RATE COUNTERS -------------------------------------------------------------
   outbound_last_hour: 0  [max 3]
   outbound_total: 0  [max 40]
   deploys_last_hour: 0
-  cycles_last_24h: 10
-  unproductive_cycles_24h: 3  [max 3 — limits may be the bottleneck]
+  cycles_last_24h: 5
+  unproductive_cycles_24h: 0
 
 -- LIVENESS ------------------------------------------------------------------
   halt_flag: False
-  hours_since_ledger_write: 0.0  [max 6]
-  hours_since_cycle: 2.3  [max 6]
+  hours_since_ledger_write: 1.3  [max 6]
+  hours_since_cycle: 4.0  [max 6]
+  deploy_url: https://undra-dteqnu36ia-lz.a.run.app  [the only live host — a URL from any other source is not this product, whatever a document claims]
   deploy_health: HTTP 200
 
 -- REVENUE -------------------------------------------------------------------
@@ -35,40 +36,41 @@ This is the only source of operational fact for this cycle. (CHARTER.md §6.2)
   related_party_payments: 0  [must be reported separately in the submission]
 
 -- CODE ----------------------------------------------------------------------
-  git_head: 3a9dc1d
+  git_head: 45688e8
   git_branch: main
   git_uncommitted_files: 0
   git_unpushed_commits: 0
 
 -- OPEN OBJECTIVES (priority order) ------------------------------------------
-  P1 Merge PR #5 (the web application MVP). CI passes on all three jobs and it is mergeable. Read the diff first, then merge_pull_request.
-  P1 Configure deployment host and setup production deployment (waiting on Operator / Cloud Run)
-  P2 Fix the refusal guardrail so it also covers image-only queries. app/main.py runs check_query_guardrails only when user_text is present, so a photographed letter with no caption reaches the model unchecked. That is the product's headline path and CHARTER.md 3.3 is absolute. Must be closed BEFORE any deployment.
-  P5 Configure deployment host and setup production deployment
+  P1 Prepare Devpost submission narrative, video script outline, and financial summary in docs/submission.md
+  P3 Verify live smoke tests and deployment status for undra app on Cloud Run
 
 -- PENDING APPROVALS (do not block on these) ---------------------------------
-  #3 LOGIN [digest] deadline=2026-08-08T16:12:58.117182+00:00 on_timeout=Continue preparing Devpost submission draft (P11) and monitoring repository state.
+  none
 
 -- OPEN QUESTIONS ------------------------------------------------------------
   #1 XPRIZE rules may restrict or require particular Google AI services (possible Vertex AI clause). Re-verify against the current rules page before the submission narrative claims which services were used. HANDOFF.md section 2 already says to re-verify the rules summary before submitting.
   #4 Devpost submission requires revenue broken out by May/June/July/August, with related-party revenue disclosed separately. Three of those months are structurally zero (the business did not exist). Confirm how to state that honestly without it reading as an omission — the ledger has no rows for those months because there was nothing, which is different from unmeasured.
   #6 Future improvement, not urgent: switch GitHub Pages from legacy branch-deploy to a GitHub Actions build-and-deploy workflow. Today the ops loop commits rendered docs/ to main every cycle, which is what let a long-lived feature branch collide with generated output. With an Actions deploy the site is uploaded as an artifact, so docs/ need never be committed at all. The catch: the site is rendered from ledger.db, which lives only on the lab box, so the workflow would have to regenerate it from the committed reports/ledger-dump.json instead — publish_log.py currently reads sqlite, not the JSON dump. Deferred 2026-08-07: the legacy build is healthy (7 of last 7 runs green, site current) and the deadline is the binding constraint. Operator's idea.
+  #8 Cloud Run service host returns HTTP 404 on base path and health check routes. Operator verification is required to confirm exact live service target URL and active route configuration.
 
 -- LAST 5 DECISIONS (newest first) -------------------------------------------
-  2026-08-08T08:13 Maintain current system state while waiting for human Operator GCP Cloud Run deployment (Request #3).
-  2026-08-08T08:12 Completed objective: Implement refuse-and-route safety guardrails for legal, tax, medical, and immigration queries
-  2026-08-08T04:12 Completed objective: Draft the Devpost submission from ledger facts only — revenue by month, expenses, marketing spend, API usage, and the 500-1000 word human-vs-AI narrat
-  2026-08-08T04:12 Completed objective: Build pre-arrival student web application MVP
-  2026-08-08T04:12 [irreversible] Mark P2 (Image-only refusal guardrail) and P7 (Refusal guardrails) complete following merge of PR #6.
+  2026-08-09T08:11 Mark Objective 1 (Prepare Devpost submission package) complete.
+  2026-08-09T04:13 Merged PR #7 containing complete Devpost submission package (docs/submission.md) into main.
+  2026-08-09T04:12 Merged pull request #7: Create docs/submission.md for Devpost submission
+  2026-08-09T00:15 Completed PR creation for submission package (PR #7) and messaged Operator regarding Cloud Run URL route confirmation.
+  2026-08-08T20:14 Parked Devpost submission review until Jules completes session #1402730080314089030.
 
 -- PREVIOUS CYCLE HANDOFF ----------------------------------------------------
-  cycle #25 (ok) 2026-08-08T08:12
-  Cycle complete.
-- Confirmed PR #5 (Web App MVP) and PR #6 (Image-only refusal guardrail) are merged into main.
-- Verified test suite (`tests/test_app_guardrails.py`) covers all 4 refusal categories (immigration, tax, legal, medical) across text and image-only queries.
-- Objective ID 10 ("Configure deployment host and setup production deployment") is tracked as P1, awaiting human Operator Cloud Run deployment (Pending Request #3).
-- Staging service is running and healthy (HTTP 200).
-- Next cycles will continue monitoring for Operator's production deployment and update of invariants.toml allowed_hosts, then proceed with production liveness verification and Devpost submission draft (P11).
+  cycle #31 (ok) 2026-08-09T08:11
+  Cycle #31 Summary:
+1. Re-verified `docs/submission.md` on `main` branch. The file is complete with full project narrative, Gemini 2.5 Flash / Google GenAI SDK details, deterministic "Refuse and Route" safety guardrails design, financial breakdown (May-August 2026), related-party disclosures, and 2.5-minute video script outline. Logged decision #42 confirming Objective P1 completion.
+2. Re-tested live Cloud Run URLs (`https://undra.nu` and `https://undra-app-850117092928.europe-west1.run.app`) via `fetch_url`. Both endpoints currently return HTTP 404.
+3. Priority 3 (`Verify live smoke tests and deployment status for undra app on Cloud Run`) remains parked pending Operator clarification on Open Question #8 (Cloud Run active URL / route mapping).
+
+State & Next Steps:
+- Open Objectives: P3 remains parked waiting for Operator clarification on Cloud Run active endpoint/mapping.
+- Open Questions #1, #4, #6, #8 remain tracked in the ledger.
 
 ==============================================================================
 END OF REPORT. Anything not above is not known to you.

@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-09T16:14:41.979252+00:00",
+  "generated_at": "2026-08-09T20:11:33.101113+00:00",
   "note": "Redacted dump of the operating ledger. Payments detail and recipient columns are omitted; see runner/ledger.py. The authoritative ledger lives only on the lab box.",
   "tables": {
     "actions": [
@@ -422,6 +422,13 @@
         "ended_at": "2026-08-09T16:14:41.945668+00:00",
         "status": "ok",
         "handoff": "All objectives (P1 and P3) are complete. docs/submission.md is merged into main and verified, containing the project narrative, financial summary (with zero-revenue rationale and related-party disclosure), and 2-3 minute video script outline. Live Cloud Run deployment at https://undra-dteqnu36ia-lz.a.run.app is healthy (HTTP 200). The product is live, fully deployed, and submission-ready ahead of the 2026-08-17 deadline."
+      },
+      {
+        "id": 34,
+        "started_at": "2026-08-09T20:11:22.382642+00:00",
+        "ended_at": "2026-08-09T20:11:33.067447+00:00",
+        "status": "ok",
+        "handoff": "Acknowledged Operator note #4. Confirmed objectives P1 (Devpost submission package) and P3 (Cloud Run deployment verification) are complete and closed. docs/submission.md is merged on main (commit 45688e8) and Cloud Run deployment at https://undra-dteqnu36ia-lz.a.run.app is healthy (HTTP 200). System is fully operational and submission-ready."
       }
     ],
     "decisions": [
@@ -864,6 +871,16 @@
         "evidence": "All open objectives (P1 and P3) are marked complete. docs/submission.md is merged and verified on main. Live Cloud Run deployment is returning HTTP 200 with full pre-arrival guides, Gemini assistant, EXIF privacy handling, and Refuse & Route guardrails.",
         "reversible": 1,
         "falsifier": "Live Cloud Run URL returns non-200 status or submission.md is missing/corrupted."
+      },
+      {
+        "id": 45,
+        "cycle_id": 34,
+        "at": "2026-08-09T20:11:30.424891+00:00",
+        "summary": "Complete Objective 1 (Prepare Devpost submission package).",
+        "rationale": "P1 objective is fully satisfied and merged to main. Completing P1 objective.",
+        "evidence": "PR #7 merged to main containing docs/submission.md, commit 45688e8.",
+        "reversible": 1,
+        "falsifier": "docs/submission.md missing or missing required narrative/script/financial sections."
       }
     ],
     "events": [
@@ -5731,6 +5748,76 @@
         "level": "info",
         "source": "tool",
         "message": "finish_cycle({\"confused\": false, \"handoff\": \"All objectives (P1 and P3) are complete. docs/submission.md is merged into main and verified, containing the project narrative, financial summary (with zero-revenue rationale and related-party disclosure), and 2-3 minute video script outline. Live Cloud Run deployment) -> {\"status\": \"cycle_will_end\", \"handoff_recorded\": true}"
+      },
+      {
+        "id": 696,
+        "at": "2026-08-09T16:14:41.992551+00:00",
+        "level": "info",
+        "source": "dump",
+        "message": "redacted ledger dump written: {'actions': 17, 'cycles': 33, 'decisions': 44, 'events': 695, 'flags': 3, 'human_requests': 3, 'llm_usage': 239, 'messages': 4, 'objectives': 13, 'open_questions': 8, 'outbound': 0, 'payments': 0, 'spend': 0}"
+      },
+      {
+        "id": 697,
+        "at": "2026-08-09T16:14:44.961524+00:00",
+        "level": "info",
+        "source": "git_push",
+        "message": "pushed HEAD to origin/main"
+      },
+      {
+        "id": 698,
+        "at": "2026-08-09T16:14:46.574045+00:00",
+        "level": "info",
+        "source": "git_push",
+        "message": "published the operations log to origin/ops-log"
+      },
+      {
+        "id": 699,
+        "at": "2026-08-09T20:11:18.765534+00:00",
+        "level": "info",
+        "source": "deploy_health",
+        "message": "200 https://undra-dteqnu36ia-lz.a.run.app/api/health"
+      },
+      {
+        "id": 700,
+        "at": "2026-08-09T20:11:18.765534+00:00",
+        "level": "warn",
+        "source": "situation_report",
+        "message": "halted=False breaches=1 unknowns=0"
+      },
+      {
+        "id": 701,
+        "at": "2026-08-09T20:11:30.399537+00:00",
+        "level": "info",
+        "source": "tool",
+        "message": "mark_notes_read({\"note_ids\": [4]}) -> {\"marked_read\": [4]}"
+      },
+      {
+        "id": 702,
+        "at": "2026-08-09T20:11:30.449850+00:00",
+        "level": "info",
+        "source": "tool",
+        "message": "log_decision({\"evidence\": \"PR #7 merged to main containing docs/submission.md, commit 45688e8.\", \"summary\": \"Complete Objective 1 (Prepare Devpost submission package).\", \"falsifier\": \"docs/submission.md missing or missing required narrative/script/financial sections.\", \"reversible\": true, \"rationale\": \"P1 object) -> {\"decision_id\": 45, \"note\": \"Published verbatim to the public log \\u2014 no personal data, no quoting (\\u00a73.5).\"}"
+      },
+      {
+        "id": 703,
+        "at": "2026-08-09T20:11:30.475469+00:00",
+        "level": "info",
+        "source": "tool",
+        "message": "complete_objective({\"objective_id\": 1, \"evidence\": \"PR #7 merged to main with docs/submission.md (commit 45688e8).\"}) -> {\"status\": \"already_closed\", \"was\": \"done\", \"note\": \"Nothing to do. Do not re-close it.\"}"
+      },
+      {
+        "id": 704,
+        "at": "2026-08-09T20:11:30.500549+00:00",
+        "level": "info",
+        "source": "tool",
+        "message": "complete_objective({\"objective_id\": 3, \"evidence\": \"Live host https://undra-dteqnu36ia-lz.a.run.app returned HTTP 200 as reported in situation report liveness.\"}) -> {\"status\": \"already_closed\", \"was\": \"done\", \"note\": \"Nothing to do. Do not re-close it.\"}"
+      },
+      {
+        "id": 705,
+        "at": "2026-08-09T20:11:33.042434+00:00",
+        "level": "info",
+        "source": "tool",
+        "message": "finish_cycle({\"confused\": false, \"handoff\": \"Acknowledged Operator note #4. Confirmed objectives P1 (Devpost submission package) and P3 (Cloud Run deployment verification) are complete and closed. docs/submission.md is merged on main (commit 45688e8) and Cloud Run deployment at https://undra-dteqnu36ia-lz.a.run.) -> {\"status\": \"cycle_will_end\", \"handoff_recorded\": true}"
       }
     ],
     "flags": [
@@ -8662,6 +8749,30 @@
         "thinking_tokens": 10,
         "total_tokens": 14196,
         "key_role": "ops"
+      },
+      {
+        "id": 240,
+        "at": "2026-08-09T20:11:30.078171+00:00",
+        "model": "gemini-3.6-flash",
+        "input_tokens": 8449,
+        "output_tokens": 221,
+        "usd_est": 0.020181,
+        "cycle_id": 34,
+        "thinking_tokens": 780,
+        "total_tokens": 9450,
+        "key_role": "ops"
+      },
+      {
+        "id": 241,
+        "at": "2026-08-09T20:11:32.758927+00:00",
+        "model": "gemini-3.6-flash",
+        "input_tokens": 9574,
+        "output_tokens": 114,
+        "usd_est": 0.015988,
+        "cycle_id": 34,
+        "thinking_tokens": 103,
+        "total_tokens": 9791,
+        "key_role": "ops"
       }
     ],
     "messages": [
@@ -8694,8 +8805,8 @@
         "at": "2026-08-09T16:12:22.490543+00:00",
         "direction": "from_operator",
         "body": "Great! Thank you.",
-        "read_at": null,
-        "cycle_id": null
+        "read_at": "2026-08-09T20:11:30.374368+00:00",
+        "cycle_id": 34
       }
     ],
     "objectives": [

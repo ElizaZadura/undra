@@ -413,6 +413,117 @@ class LlmTest(unittest.TestCase):
         self.assertGreaterEqual(FALLBACK_PRICING[1], worst_out)
 
 
+class ProseAuditTest(unittest.TestCase):
+    """Claims must be as checkable as actions.
+
+    PR #7 passed every check and put invented financials on main: a registrar
+    and an electricity bill in no ledger row, a retired model named as the one
+    in service, and revenue narrated for three months preceding the project.
+    It landed as JULES_LAND -> ok, which was true and was all the ledger could
+    say. CI verifies that code runs; nothing verified that prose is true.
+    """
+
+    CFG = {"models": {"work": "gemini-3.6-flash"},
+           "budget": {"sek_per_usd": 10.0},
+           "scope": {"allowed_hosts": ["undra-abc-lz.a.run.app"],
+                     "allowed_domains": ["undra.nu"],
+                     "publish_base_url": "https://log.undra.nu"}}
+
+    def setUp(self):
+        self.con = sqlite3.connect(":memory:")
+        self.con.row_factory = sqlite3.Row
+        self.con.executescript(_schema())
+        self.con.execute(
+            "INSERT INTO cycles(started_at, status) VALUES('2026-08-06T13:33','ok')")
+        self.con.execute(
+            "INSERT INTO llm_usage(at, model, usd_est) "
+            "VALUES('2026-08-06T13:40','gemini-3.6-flash', 5.97)")
+        self.con.commit()
+
+    def tearDown(self):
+        self.con.close()
+
+    def _audit(self, text):
+        from runner import prose_audit
+        return prose_audit.audit(text, self.con, self.CFG)
+
+    def _kinds(self, text):
+        return {f.kind for f in self._audit(text) if f.severity == "error"}
+
+    # -- the four fabrications from the real document ----------------------- #
+
+    def test_money_with_no_ledger_row_is_refused(self):
+        self.assertIn("money", self._kinds(
+            "Domain registration cost ~$10.00 USD (100 SEK)."))
+
+    def test_a_model_never_called_is_refused(self):
+        self.assertIn("model", self._kinds(
+            "The assistant is powered by `gemini-2.5-flash` via the SDK."))
+
+    def test_the_spelled_out_model_name_is_caught_too(self):
+        """Marketing prose writes 'Gemini 2.5 Flash', not the model id. The
+        first version of the auditor matched only the id and missed this."""
+        self.assertIn("model", self._kinds(
+            "Undra is powered by the **Gemini 2.5 Flash** model."))
+
+    def test_a_month_before_the_project_is_refused(self):
+        self.assertIn("month", self._kinds(
+            "| **July 2026** | $0.00 | Local infrastructure setup phase. |"))
+
+    def test_backticked_claims_are_not_skipped(self):
+        """Inline spans are how markdown writes model ids and hostnames. An
+        earlier version stripped them and missed two of four fabrications while
+        reporting ten findings — confidently, which is worse."""
+        self.assertIn("model", self._kinds("We use `gemini-2.5-flash` here."))
+
+    # -- what must NOT fire -------------------------------------------------- #
+
+    def test_the_real_figures_pass(self):
+        text = ("Spend to date is $5.97, an estimate from transcribed rates. "
+                "Arms-length revenue is $0.00. The loop runs on "
+                "`gemini-3.6-flash`. First activity: August 2026.")
+        self.assertEqual([f for f in self._audit(text) if f.severity == "error"], [])
+
+    def test_fenced_examples_are_not_claims(self):
+        self.assertEqual(self._kinds(
+            "Example:\n```\ncurl -d 'price=$999.00' https://example.com\n```\n"), set())
+
+    def test_a_configured_but_unused_model_is_allowed(self):
+        """invariants.toml may name a model no cycle has reached yet. That is a
+        plan, not a fabrication."""
+        self.assertNotIn("model", self._kinds("Planning uses gemini-3.6-flash."))
+
+    def test_owning_a_domain_is_not_serving_from_it(self):
+        f = [x for x in self._audit("Open https://undra.nu on your phone.")
+             if x.kind == "host"]
+        self.assertEqual(len(f), 1)
+        self.assertEqual(f[0].severity, "warn",
+                         "an owned domain is a weaker claim than an invented host")
+
+    def test_an_invented_host_is_an_error(self):
+        f = [x for x in self._audit("Live at https://undra-app-99.europe-west1.run.app")
+             if x.kind == "host"]
+        self.assertEqual([x.severity for x in f], ["error"])
+
+    def test_repeated_fabrications_are_reported_once(self):
+        found = self._audit("$10.00 here. And $10.00 again. And $10.00.")
+        self.assertEqual(len(found), 1)
+
+    # -- the gate ------------------------------------------------------------ #
+
+    def test_merge_is_refused_when_a_claim_is_unsupported(self):
+        from runner import prose_audit
+        errs = prose_audit.errors(self._audit("Total spend was ~$15.00 USD."))
+        self.assertTrue(errs, "the gate has nothing to refuse on")
+
+    def test_the_tool_is_reachable_before_merging(self):
+        """A check only available as a refusal at merge time is a check you hit
+        after doing the work."""
+        from runner import tools
+        self.assertIn("audit_document", tools.TOOL_IMPLS)
+        self.assertIn("audit_document", {d["name"] for d in tools.declarations()})
+
+
 class DeployIdentityTest(unittest.TestCase):
     """A health grade with no host is not an operational fact.
 

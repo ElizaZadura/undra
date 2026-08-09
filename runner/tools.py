@@ -717,6 +717,79 @@ def t_comment_on_pull_request(ctx: ToolContext, *, number: int, body: str) -> di
     return {"status": "commented", "pr": number}
 
 
+def _audit_pull_request_prose(ctx: ToolContext, gh, pr: dict) -> dict:
+    """Audit every markdown file a PR changes against the ledger.
+
+    Returns {"blocking": True, ...} when a claim cannot be supported.
+
+    Fails OPEN if the auditor itself cannot run — a missing table, a locked
+    database — but says so loudly in the result and in an error event. That is a
+    deliberate exception to this project's fail-closed habit: an auditor that
+    silently blocks every merge eight days before a deadline does more damage
+    than the fabrications it exists to catch, and unlike CI there is no
+    'verdict: none' the agent can reason about. A human reading the note can
+    tell the difference; a deadlocked loop cannot.
+    """
+    from . import prose_audit
+
+    try:
+        changed = [f["filename"] for f in gh.pull_files(pr["number"])
+                   if f["filename"].lower().endswith((".md", ".markdown"))
+                   and f.get("status") != "removed"]
+    except Exception as exc:  # noqa: BLE001
+        ctx.ledger.event("error", "prose_audit",
+                         f"could not list files for PR #{pr['number']}: {exc}")
+        return {"blocking": False, "audited": [], "auditor_failed": str(exc)[:200]}
+
+    if not changed:
+        return {"blocking": False, "audited": []}
+
+    findings: list[dict] = []
+    try:
+        for path in changed:
+            text = gh.file(path, pr["head"]["sha"])
+            for f in prose_audit.audit(text, ctx.ledger.con, ctx.cfg.raw):
+                findings.append({"file": path, **{k: getattr(f, k) for k in
+                                                  ("severity", "kind", "claim",
+                                                   "detail")}})
+    except Exception as exc:  # noqa: BLE001
+        ctx.ledger.event("error", "prose_audit",
+                         f"auditor failed on PR #{pr['number']}: {exc}")
+        return {"blocking": False, "audited": changed,
+                "auditor_failed": str(exc)[:200],
+                "note": ("The prose auditor could not run, so these files are "
+                         "UNCHECKED. That is not the same as clean. Read the "
+                         "figures yourself before merging.")}
+
+    errs = [f for f in findings if f["severity"] == "error"]
+    if not errs:
+        ctx.ledger.event("info", "prose_audit",
+                         f"PR #{pr['number']}: {len(changed)} markdown file(s) "
+                         f"audited, {len(findings)} warning(s), nothing blocking")
+        return {"blocking": False, "audited": changed, "findings": findings}
+
+    ctx.ledger.event(
+        "warn", "prose_audit",
+        f"PR #{pr['number']} refused: {len(errs)} claim(s) in "
+        f"{', '.join(sorted({f['file'] for f in errs}))} are not supported by "
+        f"the ledger")
+    return {
+        "blocking": True,
+        "error": (f"{len(errs)} claim(s) in this pull request cannot be "
+                  f"supported by the ledger. Not merged."),
+        "audited": changed,
+        "findings": findings,
+        "note": ("CHARTER.md §6: a figure that no row supports is not a figure, "
+                 "and a submission document is the artefact that gets graded. "
+                 "Fix the document — file a Jules task quoting these findings, "
+                 "or correct the ledger if the expenditure was real and simply "
+                 "never recorded. Do not merge around this; the Operator can "
+                 "merge by hand on GitHub if a claim is right and the auditor "
+                 "is wrong, and if that happens the auditor is what needs "
+                 "fixing."),
+    }
+
+
 def t_merge_pull_request(ctx: ToolContext, *, number: int,
                          reason: str = "") -> dict:
     """Merge a PR. CHARTER.md §5 grants this for PRs *that pass CI* — the
@@ -735,6 +808,21 @@ def t_merge_pull_request(ctx: ToolContext, *, number: int,
         return {"status": "already_merged", "pr": number}
     if pr["state"] != "open":
         raise ToolError(f"PR #{number} is {pr['state']}, not open")
+
+    # Prose is not code, and CI does not read it.
+    #
+    # PR #7 passed every check and put invented financials on main: a domain
+    # registrar and an electricity bill that exist in no ledger row, a retired
+    # model named as the one in service, and revenue narrated for three months
+    # that precede the project. It landed as JULES_LAND -> ok, which was true.
+    # CI verifies that code runs; nothing verified that claims are true.
+    #
+    # So markdown in a pull request is audited against the ledger before it can
+    # reach main. CHARTER.md §6 is the authority — truth discipline is not
+    # advisory, and a submission document is the one artefact that gets graded.
+    prose = _audit_pull_request_prose(ctx, gh, pr)
+    if prose.get("blocking"):
+        return prose
 
     if ci["verdict"] != "pass":
         return {"error": f"CI verdict is {ci['verdict']}, not pass",
@@ -788,7 +876,38 @@ def t_read_repo_file(ctx: ToolContext, *, path: str, ref: str = "main") -> dict:
             "content": body[:20000]}
 
 
+def t_audit_document(ctx: ToolContext, *, path: str, ref: str = "main") -> dict:
+    """Check one document's claims against the ledger, without merging anything.
+
+    Exists so the check is reachable *before* you commission or land work, not
+    only as a refusal at the end. Cheapest order: draft, audit, fix, merge.
+    """
+    from . import prose_audit
+
+    gh = ctx.github()
+    try:
+        text = gh.file(path, ref)
+    except Exception as exc:  # noqa: BLE001
+        raise ToolError(f"could not read {path} on {ref}: {exc}") from None
+
+    found = prose_audit.audit(text, ctx.ledger.con, ctx.cfg.raw)
+    errs = [f for f in found if f.severity == "error"]
+    return {
+        "path": path, "ref": ref,
+        "errors": len(errs), "warnings": len(found) - len(errs),
+        "findings": [{"severity": f.severity, "kind": f.kind,
+                      "claim": f.claim, "detail": f.detail} for f in found],
+        "note": ("No findings means no *mechanically detectable* fabrication — "
+                 "money, model names, dates and hosts. It is not a judgement on "
+                 "whether the document is true. Read it as well."
+                 if not found else
+                 "Each finding names what the ledger actually says. Fix the "
+                 "document to match, or record the missing fact with a source."),
+    }
+
+
 TOOL_IMPLS: dict[str, Callable[..., dict]] = {
+    "audit_document": t_audit_document,
     "list_repo_files": t_list_repo_files,
     "read_repo_file": t_read_repo_file,
     "list_pull_requests": t_list_pull_requests,
@@ -1022,11 +1141,26 @@ def declarations() -> list[dict]:
                                       "and what is wrong with it."},
           }, "required": ["number", "body"]}),
 
+        S(name="audit_document",
+          description=("Check a markdown document's claims against the ledger: "
+                       "money figures, model names, months, and hosts. Use it "
+                       "BEFORE merging anything you or Jules wrote, and before "
+                       "quoting a figure to the Operator. CI checks that code "
+                       "runs; nothing else checks that prose is true."),
+          parameters={"type": "object", "properties": {
+              "path": {"type": "string",
+                       "description": "Repo-relative path, e.g. docs/submission.md"},
+              "ref": {"type": "string",
+                      "description": "Branch or commit sha. Defaults to main."},
+          }, "required": ["path"]}),
+
         S(name="merge_pull_request",
           description=("Merge a PR into main. Authorised by CHARTER.md §5 only "
                        "for PRs that pass CI, and that is checked — a repository "
                        "with no checks configured does not count as passing. "
-                       "Read the diff first."),
+                       "Markdown in the PR is also audited against the ledger, "
+                       "and an unsupported claim refuses the merge. Read the "
+                       "diff first."),
           parameters={"type": "object", "properties": {
               "number": {"type": "integer"},
               "reason": {"type": "string",

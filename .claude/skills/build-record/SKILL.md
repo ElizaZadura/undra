@@ -97,6 +97,28 @@ a session that did not publish the artifact will create a second one. If
 `/home/elz/undra-build-record.html` is missing, fetch the published page with WebFetch and
 rebuild from that, preserving the existing design rather than restyling.
 
+**Expect the first publish to fail with a 409.** Any session that did not itself publish
+this artifact — which is most of them — is refused until it has viewed the current
+version. This is a safety check, not a fault: it exists so one session cannot silently
+discard another's work. Observed 2026-08-08.
+
+The fix is never `force: true`. Do this instead:
+
+1. `WebFetch` the artifact URL. Read what is actually published.
+2. Compare it against the local HTML. If the published page contains work the local file
+   lacks, another session wrote it — merge that in before going further.
+3. Republish. It now succeeds.
+
+On 2026-08-08 the published version turned out to be identical to the local file's
+starting point, so nothing needed merging — but that was only knowable *after* fetching.
+`force: true` would have looked like it worked in exactly the same way, while discarding
+another session's edits in the case where they existed.
+
+**Once the artifact has been shared, edits are amendments, not revisions.** The page is
+private until the Operator shares it; after that, anyone holding the link sees each
+republish immediately. Correcting a figure then changes a document people have already
+read, so say on the page that it changed rather than quietly restating it.
+
 **Design notes for the HTML**, so a refresh does not drift: teal `#1F5F5B` marks
 human-attributed work and coral `#C4614A` marks agent-attributed work, running through
 the timeline and the split panel. Monospace carries machine facts, a system serif carries

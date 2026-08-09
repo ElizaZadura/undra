@@ -413,6 +413,46 @@ class LlmTest(unittest.TestCase):
         self.assertGreaterEqual(FALLBACK_PRICING[1], worst_out)
 
 
+class DeployIdentityTest(unittest.TestCase):
+    """A health grade with no host is not an operational fact.
+
+    On 2026-08-09 the report said `deploy_health: HTTP 200` and named nothing.
+    Asked to smoke-test the deployment, the agent had no host, took a URL from a
+    draft document that was never the live service, got 404s and escalated the
+    product as down while it was serving normally. CHARTER.md §6.2 makes this
+    report the agent's only source of operational truth, so whatever it must act
+    on has to be stated, not implied.
+    """
+
+    CFG = {"staleness": {"max_hours_without_healthy_deploy": 4},
+           "scope": {"allowed_hosts": ["example-abc-lz.a.run.app"],
+                     "health_path": "/api/health"}}
+
+    def _facts(self):
+        from unittest.mock import patch
+        import situation_report as sr
+        rep = sr.Report(now=datetime.now(timezone.utc))
+        con = sqlite3.connect(":memory:")
+        con.row_factory = sqlite3.Row
+        con.executescript(_schema())
+        with patch.object(sr.urllib.request, "urlopen", side_effect=OSError("down")):
+            sr.collect_deploy(rep, con, self.CFG)
+        con.close()
+        return {f.key: f for f in rep.facts}
+
+    def test_the_host_is_named_even_when_the_check_fails(self):
+        """Especially then: an unreachable deployment is exactly when someone
+        goes hunting for the right URL."""
+        f = self._facts()
+        self.assertIn("deploy_url", f)
+        self.assertEqual(f["deploy_url"].value, "https://example-abc-lz.a.run.app")
+
+    def test_the_host_is_actually_rendered(self):
+        """Facts absent from render()'s group table are computed and dropped."""
+        import situation_report as sr
+        self.assertIn("deploy_url", inspect.getsource(sr.render))
+
+
 class QuotaCauseTest(unittest.TestCase):
     """The loop may say the free key stopped. It may not say why.
 

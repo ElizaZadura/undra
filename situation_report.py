@@ -512,6 +512,26 @@ def collect_deploy(rep: Report, con, cfg: dict) -> None:
         return
     path = cfg.get("scope", {}).get("health_path", "/healthz")
     url = os.environ.get("HEALTHCHECK_URL") or f"https://{hosts[0]}{path}"
+
+    # Name the host, don't just grade it.
+    #
+    # Until 2026-08-09 this collector reported `deploy_health: HTTP 200` and
+    # nothing else, because Fact.render() prints key, value and note but never
+    # `source`. The agent was therefore told that something was healthy without
+    # being told what. Handed an objective to smoke-test the deployment, it had
+    # no host to test, went looking, found a URL in a draft document that was
+    # never the live service, got 404s from it, and escalated the product as
+    # down while the product was serving normally.
+    #
+    # It behaved correctly on a briefing that withheld the one fact it needed.
+    # CHARTER.md §6.2 makes this report the agent's only source of operational
+    # truth, which is a promise: anything it must act on has to be IN here, not
+    # merely implied by something in here.
+    rep.add(Fact("deploy_url", f"https://{hosts[0]}",
+                 source="invariants.toml scope.allowed_hosts",
+                 note="the only live host — a URL from any other source is not "
+                      "this product, whatever a document claims"))
+
     healthy = False
     try:
         req = urllib.request.Request(url, headers={"User-Agent": "situation-report/1"})
@@ -667,7 +687,7 @@ def render(rep: Report, cfg: dict) -> str:
                           "deploys_last_hour", "cycles_last_24h",
                           "unproductive_cycles_24h"),
         "LIVENESS": ("halt_flag", "hours_since_ledger_write", "hours_since_cycle",
-                     "deploy_health", "hours_since_healthy_deploy"),
+                     "deploy_url", "deploy_health", "hours_since_healthy_deploy"),
         "REVENUE": ("arms_length_payments", "arms_length_gross_usd",
                     "related_party_payments"),
         "CODE": ("git_head", "git_branch", "git_uncommitted_files",

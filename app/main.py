@@ -184,8 +184,20 @@ async def chat(
     try:
         from google.genai import types
 
-        # We'll use gemini-2.5-flash as the standard fast multimodal model
-        model_name = os.environ.get("UNDRA_APP_MODEL", "gemini-2.5-flash")
+        # The fallback must be a model that exists.
+        #
+        # This defaulted to gemini-2.5-flash, which Google retired for new
+        # users. On 2026-08-07 the deployed service returned 404 for every
+        # answerable question while refusals kept working perfectly — refusals
+        # are deterministic and never call the model, and neither does
+        # /api/health, so every check that was being run stayed green while the
+        # product's only real function was broken.
+        #
+        # cloudbuild.yaml sets UNDRA_APP_MODEL explicitly, so this value is only
+        # reached by a deploy that forgets it. That is precisely the deploy that
+        # must not resurrect a retired model. Keep this in step with
+        # invariants.toml [models]; a deploy-time env var still wins.
+        model_name = os.environ.get("UNDRA_APP_MODEL", "gemini-3.6-flash")
 
         config = types.GenerateContentConfig(
             system_instruction=SYSTEM_INSTRUCTION

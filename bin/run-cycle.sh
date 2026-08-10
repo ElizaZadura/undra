@@ -219,8 +219,26 @@ if [ "${UNDRA_PUSH:-0}" = "1" ]; then
       fi
     fi
 
+    # After a successful push, move the remote-tracking ref ourselves.
+    #
+    # Pushing to a NAMED remote updates refs/remotes/<name>/* as a side effect.
+    # Pushing to an explicit URL — which this script does, so the token never
+    # lands in .git/config — does not. The ref therefore stayed at whatever the
+    # last fetch saw, which is the state *before* this cycle's own commit.
+    #
+    # That made situation_report.py's offsite check report a stale public log on
+    # every single cycle from 2026-08-09, while the log was in fact current. The
+    # check was right about its inputs and its inputs were a cycle behind. It is
+    # warn severity, so it only produced noise; at halt severity it would have
+    # stopped the loop every four hours.
+    track() {
+      git update-ref "refs/remotes/origin/$1" "$(git rev-parse "refs/heads/$1")" \
+        2>/dev/null || true
+    }
+
     if git push -q "$REMOTE" HEAD:main 2>&1 | scrub; then
       log "pushed main"
+      git update-ref refs/remotes/origin/main "$(git rev-parse HEAD)" 2>/dev/null || true
       ./bin/ledger-note event info git_push "pushed HEAD to origin/main" >/dev/null
     else
       log "push failed"
@@ -237,6 +255,7 @@ if [ "${UNDRA_PUSH:-0}" = "1" ]; then
       if git push -q "$REMOTE" \
            "refs/heads/${PUBLISH_BRANCH}:refs/heads/${PUBLISH_BRANCH}" 2>&1 | scrub; then
         log "pushed ${PUBLISH_BRANCH}"
+        track "${PUBLISH_BRANCH}"
         ./bin/ledger-note event info git_push \
           "published the operations log to origin/${PUBLISH_BRANCH}" >/dev/null
       else

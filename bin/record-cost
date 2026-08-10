@@ -1,0 +1,133 @@
+#!/usr/bin/env python3
+"""Record a real cost, with its evidence, so it can be quoted.
+
+The Operator's tool, not the agent's. Coral cannot spend money and has no
+business asserting what was spent; these are costs a person actually incurred
+and can produce a receipt for.
+
+Why this exists: `spend` had a reader and no writer. The watchdog totalled it,
+prose_audit checked figures against it, and nothing could put a row in it. So
+when the submission draft needed a cost breakdown, there was no domain
+registration to read and no electricity to read, and it invented both — at
+values plausible enough that nobody queried them for two days.
+
+The fix is not "try harder". It is to make the true figure available, and to
+refuse a figure with no evidence attached, so the difference between a number
+someone measured and a number someone produced is visible in the row itself.
+
+    bin/record-cost --category domain --usd 10.40 \
+        --description "undra.nu, 1 year, Hostup invoice #12345 dated 2026-08-05, 104 SEK at 10.0 SEK/USD"
+
+    bin/record-cost --list
+    bin/record-cost --category electricity --usd 2.80 --estimate \
+        --description "lab box red, 65W measured at the wall x 96h x 0.45 SEK/kWh"
+
+Anything recorded here becomes quotable in documents: prose_audit accepts a
+figure that matches a row, and refuses one that does not.
+"""
+
+from __future__ import annotations
+
+import argparse
+import hashlib
+import sys
+import tomllib
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from runner.ledger import Ledger  # noqa: E402
+
+ROOT = Path(__file__).resolve().parent.parent
+
+CATEGORIES = ("domain", "hosting", "electricity", "hardware", "subscription",
+              "marketing", "fees", "other")
+
+
+def main(argv: list[str]) -> int:
+    p = argparse.ArgumentParser(
+        description="Record a non-API cost with its evidence.",
+        epilog="Every figure here should survive someone asking 'says who?'")
+    p.add_argument("--category", choices=CATEGORIES,
+                   help="What kind of cost this is.")
+    p.add_argument("--usd", type=float, help="Amount in USD.")
+    p.add_argument("--description",
+                   help="The EVIDENCE. Invoice or receipt reference, or how an "
+                        "estimate was derived. Refused if it is just a number.")
+    p.add_argument("--estimate", action="store_true",
+                   help="Mark this as an estimate rather than a billed amount. "
+                        "Prefixed in the row so no document can quote it as "
+                        "measured.")
+    p.add_argument("--list", action="store_true", help="Show recorded costs.")
+    args = p.parse_args(argv[1:])
+
+    cfg_path = ROOT / "invariants.toml"
+    db = "./ledger.db"
+    try:
+        with open(cfg_path, "rb") as fh:
+            db = (tomllib.load(fh).get("scope") or {}).get("ledger_path", db)
+    except OSError:
+        pass
+
+    led = Ledger(str(ROOT / db.lstrip("./")))
+
+    if args.list:
+        rows = led.spend_rows()
+        if not rows:
+            print("No non-API costs recorded.\n"
+                  "Anything not in here cannot honestly appear in a document.")
+        else:
+            total = 0.0
+            for r in rows:
+                total += r["usd"]
+                print(f"  {r['at'][:10]}  {r['category']:13} ${r['usd']:>8.2f}  "
+                      f"{r['description']}")
+            print(f"  {'':10}  {'TOTAL':13} ${total:>8.2f}")
+        print(f"\nLLM spend (estimated from transcribed rates): "
+              f"${led.llm_spend_usd():.2f}")
+        print(f"Combined total:                               "
+              f"${led.spend_total_usd():.2f}")
+        led.close()
+        return 0
+
+    missing = [f for f, v in (("--category", args.category),
+                              ("--usd", args.usd),
+                              ("--description", args.description)) if v is None]
+    if missing:
+        print(f"missing required: {', '.join(missing)}", file=sys.stderr)
+        led.close()
+        return 2
+
+    desc = args.description.strip()
+    if args.estimate:
+        desc = f"ESTIMATE — {desc}"
+
+    # Idempotent on the substance, so re-running the same command twice does not
+    # double-count a cost the way a fat-fingered repeat easily could.
+    key = "spend:" + hashlib.sha256(
+        f"{args.category}|{args.usd:.2f}|{desc}".encode()).hexdigest()[:16]
+
+    try:
+        rid = led.record_spend(category=args.category, usd=args.usd,
+                               description=desc, idempotency_key=key)
+    except ValueError as exc:
+        print(f"refused: {exc}", file=sys.stderr)
+        led.close()
+        return 1
+    except Exception as exc:  # noqa: BLE001 — most likely the unique constraint
+        if "UNIQUE" in str(exc):
+            print("already recorded — this exact cost is in the ledger.")
+            led.close()
+            return 0
+        raise
+
+    print(f"recorded #{rid}: {args.category} ${args.usd:.2f}")
+    print(f"  {desc}")
+    print(f"\nCombined total is now ${led.spend_total_usd():.2f}. "
+          f"This figure is quotable; prose_audit will accept it.")
+    led.close()
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv))

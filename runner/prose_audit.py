@@ -103,6 +103,9 @@ class Ground:
     """The verifiable facts, read from the ledger and invariants. No estimates
     beyond the one the ledger itself labels as an estimate."""
     spend_usd: float
+    llm_usd: float
+    line_items: set[float]     # each recorded cost, so itemised tables work
+    caps: set[float]           # budget ceilings are legitimate to quote
     models: set[str]
     configured_models: set[str]
     first_activity: datetime | None
@@ -148,9 +151,28 @@ class Ground:
         cfgmodels = {str(v) for k, v in (cfg.get("models") or {}).items()
                      if isinstance(v, str) and v.startswith("gemini")}
 
+        llm = float(q1("SELECT COALESCE(SUM(usd_est),0) FROM llm_usage"))
+        other = float(q1("SELECT COALESCE(SUM(usd),0) FROM spend"))
+
+        # Individual rows, not only the total. A cost breakdown is the normal
+        # shape of a financial section, and an auditor that accepts only the
+        # grand total forces the writer to choose between an itemised table and
+        # a checkable one.
+        items = set()
+        try:
+            items = {round(float(r[0]), 2) for r in
+                     con.execute("SELECT usd FROM spend")}
+        except sqlite3.Error:
+            pass
+
+        caps = {float(v) for k, v in (cfg.get("budget") or {}).items()
+                if isinstance(v, (int, float)) and str(k).startswith(("cap", "hard"))}
+
         return cls(
-            spend_usd=float(q1("SELECT COALESCE(SUM(usd_est),0) FROM llm_usage"))
-                      + float(q1("SELECT COALESCE(SUM(usd),0) FROM spend")),
+            spend_usd=llm + other,
+            llm_usd=llm,
+            line_items=items,
+            caps=caps,
             models=models,
             configured_models=cfgmodels,
             first_activity=first,
@@ -181,8 +203,16 @@ def _check_money(text: str, g: Ground, sek_per_usd: float) -> Iterable[Finding]:
     plausible invention and rejects an implausible one, so the test is
     provenance, not plausibility: if no row supports it, it is unsourced.
     """
-    known = {round(g.spend_usd, 2), round(g.revenue_usd, 2), 0.0}
-    # Budget ceilings are legitimate to quote, so allow them explicitly.
+    # Caps are deliberately NOT in here.
+    #
+    # An earlier version accepted any figure equal to a configured budget
+    # ceiling, on the grounds that quoting the ceiling is legitimate. It is —
+    # but cap_marketing is $10.00, and the fabrication this module was written
+    # to catch was "$10.00 USD" for a domain registration. Treating a config
+    # value as evidence of expenditure opens a hole at exactly the round numbers
+    # invented figures favour. Caps get a warning of their own below instead.
+    known = ({round(g.spend_usd, 2), round(g.llm_usd, 2),
+              round(g.revenue_usd, 2), 0.0} | g.line_items)
     for m in _MONEY.finditer(text):
         raw = m.group(0).strip()
         if m.group("usd_n"):
@@ -193,12 +223,23 @@ def _check_money(text: str, g: Ground, sek_per_usd: float) -> Iterable[Finding]:
             continue
         if any(abs(n - k) <= max(0.01, k * 0.02) for k in known):
             continue
+        if any(abs(n - c) <= 0.01 for c in g.caps):
+            yield Finding(
+                "warn", "money", raw,
+                f"this equals a configured budget ceiling in invariants.toml, "
+                f"not a recorded cost. Quoting the cap is fine — say it is a "
+                f"cap. Quoting it as money spent is not: nothing was spent "
+                f"here. Recorded expenditure is ${g.spend_usd:.2f}.")
+            continue
         yield Finding(
             "error", "money", raw,
-            f"no ledger row supports this. Recorded spend is "
-            f"${g.spend_usd:.2f} (an estimate from transcribed rates) and "
-            f"recorded revenue is ${g.revenue_usd:.2f}. Either add the "
-            f"expenditure to the spend table with a source, or remove the claim.")
+            f"no ledger row supports this. Recorded: API usage "
+            f"${g.llm_usd:.2f} (estimated from transcribed rates), other costs "
+            f"{('$%.2f' % sum(g.line_items)) if g.line_items else 'none recorded'}"
+            f", combined ${g.spend_usd:.2f}, revenue ${g.revenue_usd:.2f}. "
+            f"If the cost was real, record it with its evidence — "
+            f"`bin/record-cost` — and it becomes quotable. If it was not, "
+            f"remove the claim.")
 
 
 def _check_models(text: str, g: Ground) -> Iterable[Finding]:

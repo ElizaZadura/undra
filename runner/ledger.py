@@ -121,6 +121,48 @@ class Ledger:
              total_tokens, usd_est, cycle_id, key_role))
         self.con.commit()
 
+    # -- non-LLM expenditure ------------------------------------------------ #
+
+    def record_spend(self, *, category: str, usd: float, description: str,
+                     idempotency_key: str) -> int:
+        """Record a real cost that is not an API call. Evidence is mandatory.
+
+        Until 2026-08-10 this table had a reader — the watchdog totals it, and
+        prose_audit checks figures against it — and no writer anywhere. Zero
+        rows, and no code path that could add one. Every non-API cost the
+        business incurred was therefore structurally unrecordable.
+
+        That is not a cosmetic gap. It is the direct cause of the fabricated
+        financials in the submission draft: asked for a cost breakdown, the
+        drafter found nothing to read for the domain or the electricity and
+        invented both, at plausible-looking values. A figure has to be
+        *possible* to source before anyone can be blamed for not sourcing it.
+
+        `description` must carry the evidence — an invoice number, a receipt
+        URL, how an estimate was arrived at. It is refused otherwise. The point
+        of this row is not the number; the number was always guessable. The
+        point is that the number can be checked by someone who doubts it, which
+        is the only property that distinguishes a figure from a claim.
+        """
+        if not description or len(description.strip()) < 12:
+            raise ValueError(
+                "description must state the evidence for this cost — an invoice "
+                "or receipt reference, or how the estimate was derived. A bare "
+                "amount is the thing this table exists to prevent.")
+        if usd < 0:
+            raise ValueError("negative spend: record a refund as its own row "
+                             "with the reason, do not net it off")
+        cur = self.con.execute(
+            "INSERT INTO spend(at, category, usd, description, idempotency_key) "
+            "VALUES(?,?,?,?,?)",
+            (utcnow(), category, float(usd), description.strip(), idempotency_key))
+        self.con.commit()
+        return int(cur.lastrowid)
+
+    def spend_rows(self) -> list[sqlite3.Row]:
+        return self.con.execute(
+            "SELECT * FROM spend ORDER BY at").fetchall()
+
     def spend_total_usd(self) -> float:
         llm = self.con.execute("SELECT COALESCE(SUM(usd_est),0) FROM llm_usage").fetchone()[0]
         other = self.con.execute("SELECT COALESCE(SUM(usd),0) FROM spend").fetchone()[0]

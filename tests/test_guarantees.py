@@ -509,6 +509,36 @@ class ProseAuditTest(unittest.TestCase):
         found = self._audit("$10.00 here. And $10.00 again. And $10.00.")
         self.assertEqual(len(found), 1)
 
+    # -- itemised costs, once they can be recorded at all -------------------- #
+
+    def _with_cost(self, usd, desc="Hostup invoice #12345 dated 2026-08-05"):
+        self.con.execute(
+            "INSERT INTO spend(at, category, usd, description, idempotency_key) "
+            "VALUES('2026-08-05','domain',?,?,'k1')", (usd, desc))
+        self.con.commit()
+
+    def test_a_recorded_line_item_becomes_quotable(self):
+        """A financial section is itemised. An auditor that accepts only the
+        grand total forces a choice between an itemised table and a checkable
+        one."""
+        self._with_cost(10.40)
+        self.assertEqual(self._kinds("The domain cost $10.40."), set())
+
+    def test_an_unrecorded_line_item_is_still_refused(self):
+        self._with_cost(10.40)
+        self.assertIn("money", self._kinds("The domain cost $47.00."))
+
+    def test_a_budget_cap_is_not_evidence_of_spending(self):
+        """cap_marketing is $10.00 and the original fabrication was '$10.00 USD'
+        for a domain. Treating a config value as evidence of expenditure opens a
+        hole at exactly the round numbers invented figures favour."""
+        cfg = dict(self.CFG, budget={"sek_per_usd": 10.0, "cap_marketing": 10.0})
+        from runner import prose_audit
+        found = prose_audit.audit("The domain cost $10.00.", self.con, cfg)
+        self.assertEqual([f.severity for f in found], ["warn"],
+                         "a cap must neither pass silently nor read as a cost")
+
+
     # -- the gate ------------------------------------------------------------ #
 
     def test_merge_is_refused_when_a_claim_is_unsupported(self):
@@ -523,6 +553,61 @@ class ProseAuditTest(unittest.TestCase):
         self.assertIn("audit_document", tools.TOOL_IMPLS)
         self.assertIn("audit_document", {d["name"] for d in tools.declarations()})
 
+
+class LedgerSpendTest(unittest.TestCase):
+    """`spend` had a reader and no writer, which is why the costs were invented.
+
+    The watchdog totalled this table and prose_audit checked figures against it,
+    and no code path could put a row in it. Asked for a cost breakdown, the
+    drafter found nothing to read for the domain or the electricity and made
+    both up. A figure has to be possible to source before anyone can be blamed
+    for not sourcing it.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        path = str(Path(self.tmp.name) / "ledger.db")
+        con = sqlite3.connect(path)
+        con.executescript(_schema())
+        con.commit()
+        con.close()
+        self.led = Ledger(path)
+
+    def tearDown(self):
+        self.led.close()
+        self.tmp.cleanup()
+
+    def test_a_cost_can_be_recorded_at_all(self):
+        rid = self.led.record_spend(
+            category="domain", usd=10.40,
+            description="undra.nu 1yr, Hostup invoice #12345 dated 2026-08-05",
+            idempotency_key="spend:a")
+        self.assertTrue(rid)
+        self.assertAlmostEqual(self.led.spend_total_usd(), 10.40, places=2)
+
+    def test_evidence_is_mandatory(self):
+        """The number was always guessable. The point of the row is that someone
+        who doubts it can check it."""
+        for desc in ("", "   ", "10 bucks"):
+            with self.assertRaises(ValueError):
+                self.led.record_spend(category="domain", usd=10.40,
+                                      description=desc, idempotency_key="spend:" + desc)
+        self.assertEqual(self.led.spend_total_usd(), 0.0)
+
+    def test_the_same_cost_cannot_be_recorded_twice(self):
+        kw = dict(category="domain", usd=10.40,
+                  description="Hostup invoice #12345 dated 2026-08-05",
+                  idempotency_key="spend:dup")
+        self.led.record_spend(**kw)
+        with self.assertRaises(sqlite3.IntegrityError):
+            self.led.record_spend(**kw)
+        self.assertAlmostEqual(self.led.spend_total_usd(), 10.40, places=2)
+
+    def test_a_refund_is_its_own_row_not_a_negative(self):
+        with self.assertRaises(ValueError):
+            self.led.record_spend(category="domain", usd=-5.0,
+                                  description="refund for the duplicate order",
+                                  idempotency_key="spend:neg")
 
 class DeployIdentityTest(unittest.TestCase):
     """A health grade with no host is not an operational fact.

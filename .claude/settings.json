@@ -81,7 +81,13 @@
       "Bash(curl:*)",
       "Bash(rm:*)",
       "Bash(bin/build-record-facts:*)",
-      "Bash(./bin/build-record-facts:*)"
+      "Bash(./bin/build-record-facts:*)",
+      "Bash(dig:*)",
+      "Bash(host:*)",
+      "Bash(nslookup:*)",
+      "Bash(ss:*)",
+      "Bash(openssl s_client:*)",
+      "Bash(openssl x509:*)"
     ],
     "deny": [
       "Read(./env/**)",

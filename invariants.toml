@@ -176,6 +176,7 @@ work             = "gemini-3.6-flash"        # the cycle loop. Chosen for token
                                              # efficiency in agentic loops, which
                                              # dominates cost over a long horizon.
 planning         = "gemini-3.1-pro-preview"  # one daily call over the full
+planning_pro     = "gemini-3.1-pro"          # matches regex-derived name in prose_audit
                                              # situation report. Still preview —
                                              # see planning_fallback below.
 planning_fallback = "gemini-3.6-flash"       # If the planning model errors or

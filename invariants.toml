@@ -114,7 +114,18 @@ LEGAL_OR_MEDICAL_CLAIM = "halt"          # should never fire; if it does, stop e
 # at the end of that section: scope is now a property of the system (Docker
 # networks, a repo-scoped token) rather than a rule to be obeyed.
 allowed_repos    = ["ElizaZadura/undra"]
-allowed_hosts    = ["undra-dteqnu36ia-lz.a.run.app"]   # deployed 2026-08-07
+# The apex first, deliberately: hosts[0] is what deploy_health polls, so the
+# watchdog exercises the whole path a real visitor takes — DNS, certificate and
+# service — rather than only the last hop. A mapping that breaks at the domain
+# while the service stays healthy is exactly the failure a run.app-only check
+# would call green.
+#
+# The run.app URL stays listed. It is still live, still a legitimate reference,
+# and prose_audit reads this list to decide which URLs a document may name.
+allowed_hosts    = [
+  "undra.nu",                        # custom domain, cert issued 2026-08-10
+  "undra-dteqnu36ia-lz.a.run.app",   # deployed 2026-08-07, still serving
+]
 # Path the watchdog polls to decide deploy_health. The app serves /api/health,
 # not /healthz — a mismatch here reports a healthy deployment as down and
 # eventually halts the loop over nothing.

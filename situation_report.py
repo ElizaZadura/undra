@@ -527,10 +527,13 @@ def collect_deploy(rep: Report, con, cfg: dict) -> None:
     # CHARTER.md §6.2 makes this report the agent's only source of operational
     # truth, which is a promise: anything it must act on has to be IN here, not
     # merely implied by something in here.
+    others = [h for h in hosts[1:] if h]
     rep.add(Fact("deploy_url", f"https://{hosts[0]}",
                  source="invariants.toml scope.allowed_hosts",
-                 note="the only live host — a URL from any other source is not "
-                      "this product, whatever a document claims"))
+                 note=("polled by the watchdog"
+                       + (f"; also serving: {', '.join(others)}" if others else "")
+                       + ". These are the only URLs that are this product — any "
+                         "other is not, whatever a document claims")))
 
     healthy = False
     try:

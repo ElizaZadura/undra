@@ -163,31 +163,74 @@ REFUSAL_CATEGORIES = {
         "title": "Medical & Safety Concerns",
         "authority": "1177 Vårdguiden & Emergency Services (112)",
         "patterns": [
-            r"\b1177\b",
-            r"\bvårdguiden\b",
-            r"\bdoctor\b",
-            r"\bhospital\b",
-            r"\bmedical\b",
-            r"\bmedicine\b",
-            r"\bprescribe\b",
-            r"\bprescription\b",
-            r"\billness\b",
-            r"\bsick\b",
-            r"\bfever\b",
-            r"\bpain\b",
-            r"\binjury\b",
-            r"\baccident\b",
-            r"\bambulance\b",
-            r"\bemergency\b",
-            r"\bpolice\b",
-            r"\bsafety issue\b",
-            r"\bmental health\b",
-            r"\bdepression\b",
-            r"\bsuicide\b",
-            r"\b112\b",
-            r"\bvårdcentral\b",
-            r"\bhealth center\b",
-            r"\bclinic\b"
+            # Narrowed 2026-08-12, on the first real user's feedback and with
+            # the Operator's explicit approval.
+            #
+            # Every pattern here used to be a bare institution noun — \bdoctor\b,
+            # \b1177\b, \bclinic\b, \bvårdcentral\b. Naming the institution was
+            # the trigger, so "what is 1177?" was refused with a card telling the
+            # user to contact 1177. The product refused to explain the service it
+            # was recommending.
+            #
+            # That is topic detection. What CHARTER §3.3 forbids is a
+            # DETERMINATION about someone's health — a diagnosis, a judgement of
+            # urgency, a treatment. Explaining how Swedish healthcare works for a
+            # newcomer is the product's stated purpose, and refusing it sends the
+            # user to a general chatbot that will answer confidently and may be
+            # wrong — the exact harm the product exists to prevent. A wall is not
+            # safety.
+            #
+            # Symptoms, diagnosis, treatment, urgency and crisis stay hard
+            # refusals. Booking, registering and "what is 1177" now answer.
+
+            # --- symptoms and conditions ---
+            r"\bfever\b", r"\bpain\b", r"\bache\b", r"\bsick\b", r"\bill\b",
+            r"\billness\b", r"\binjury\b", r"\binjured\b", r"\bwound\b",
+            r"\bbleeding\b", r"\brash\b", r"\binfection\b", r"\bsymptom",
+            r"\bnausea\b", r"\bvomit", r"\bdizzy\b", r"\ballerg",
+            # "broke my arm", not just "broken arm" — the tense people use.
+            # \bbroke\b alone would catch "I'm broke", so a body part must
+            # follow within a few words.
+            (r"\bbro(?:ke|ken)\b.{0,14}"
+             r"\b(bone|arm|leg|wrist|ankle|rib|finger|toe|nose|collarbone)\b"),
+            r"\bsprain",
+            r"\bcough\b", r"\bflu\b", r"\bcovid\b", r"\baccident\b",
+
+            # --- diagnosis and treatment ---
+            r"\bprescribe\b", r"\bprescription\b", r"\bmedicine\b",
+            r"\bmedication\b", r"\bdiagnos", r"\btreatment\b", r"\bdosage\b",
+            r"\bantibiotic", r"\bpainkiller", r"\bmedical advice\b",
+            r"\bhealth advice\b", r"\bwhat.{0,12}wrong with me\b",
+
+            # --- urgency and emergency ---
+            r"\b112\b", r"\bambulance\b", r"\bemergency\b", r"\bakuten\b",
+            r"\burgent care\b", r"\blife.threatening\b", r"\bunconscious\b",
+
+            # --- mental health and crisis. Deliberately still broad: the cost of
+            #     a wrong call here is not symmetrical with the cost of an
+            #     unhelpful refusal.
+            r"\bmental health\b", r"\bdepress", r"\banxiety\b",
+            r"\bsuicid", r"\bself.harm\b",
+
+            # --- personal safety ---
+            r"\bpolice\b", r"\bassault", r"\bharass", r"\bsafety issue\b",
+            r"\bthreatened\b",
+
+            # --- asking for a judgement about whether to seek care. Note the
+            #     verbs: "should I SEE a doctor" is a determination; "do I need
+            #     to BOOK a doctor in advance" is a question about the booking
+            #     system, and answers.
+            # The modal must attach to the care verb itself. An earlier version
+            # allowed 24 characters of slack and so refused "do I need INSURANCE
+            # to see a doctor here?" — an admin question about the healthcare
+            # system, which is exactly what this narrowing exists to allow.
+            (r"\b(should|shall|must|ought)\s+(i|we|he|she|they)\s+"
+             r"(see|visit|go\s+to)\b.{0,16}"
+             r"\b(doctor|hospital|vårdcentral|clinic|akuten)\b"),
+            (r"\b(do|does|did)\s+(i|we|he|she|they)\s+(need|have)\s+to\s+"
+             r"(see|visit|go\s+to)\b.{0,16}"
+             r"\b(doctor|hospital|vårdcentral|clinic|akuten)\b"),
+            r"\b(is|are)\b.{0,20}\b(serious|dangerous|worrying|infected)\b",
         ],
         "message": (
             "I cannot provide medical advice, diagnosis, or assist with physical or mental health and safety emergencies. "

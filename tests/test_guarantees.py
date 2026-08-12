@@ -363,6 +363,94 @@ class ProtectedPathTest(unittest.TestCase):
                          cfg["gates"]["require_approval"])
 
 
+class OperatorViewTest(unittest.TestCase):
+    """`bin/waiting` is the only thing in this repository written for the one
+    participant who cannot be re-run or given a longer context window."""
+
+    def test_every_gated_kind_is_classified(self):
+        """The guarantee that keeps the taxonomy from going stale. Adding a kind
+        to invariants.toml without classifying it here means bin/waiting tells
+        her to approve something it does not understand."""
+        import tomllib
+        from runner.operator import classify
+        root = Path(__file__).resolve().parents[1]
+        cfg = tomllib.loads((root / "invariants.toml").read_text())
+        for kind in cfg["gates"]["require_approval"]:
+            self.assertNotEqual(
+                classify(kind), "unclassified",
+                f"{kind} is gated but bin/waiting cannot say what to do about it")
+
+    def test_the_two_reasons_a_gate_exists_are_kept_apart(self):
+        """Forbidden means approving is the whole act. Incapable means she has
+        to do it first. Collapsing them is the confusion this module exists for."""
+        from runner.operator import classify
+        self.assertEqual(classify("LOGIN"), "act-then-approve")
+        self.assertEqual(classify("TOS_ACCEPTANCE"), "act-then-approve")
+        self.assertEqual(classify("PUBLISH"), "approve-only")
+        self.assertEqual(classify("LEGAL_OR_MEDICAL_CLAIM"), "never-grant")
+
+    def test_a_report_is_not_offered_as_an_approval(self):
+        from runner.operator import pending
+        con = self._db([(1, "PROTECTED_PATH_PATCH", "touched invariants.toml")])
+        item, = pending(con)
+        self.assertNotIn("approve", item.command)
+        self.assertIn("by hand", item.prepare)
+
+    def test_blocking_is_narrow(self):
+        """CHARTER.md §4 tells Coral to keep working while a request is pending.
+        A view that calls everything urgent is one nobody reads."""
+        from runner.operator import pending
+        con = self._db([(1, "PUBLISH", "ship the log"),
+                        (2, "LOGIN", "re-auth the billing console")])
+        blocks = {i.kind: i.blocks for i in pending(con)}
+        self.assertFalse(blocks["PUBLISH"])
+        self.assertTrue(blocks["LOGIN"])
+
+    def test_a_session_id_survives_a_title_containing_money(self):
+        """Titles are free text and have carried figures before — "Fix spend
+        claim to $8.38 USD" is a real one."""
+        from runner.operator import pending
+        con = self._db([(1, "JULES_PLAN_APPROVAL",
+                         "Jules session 5686851207941248156 — "
+                         "Fix spend claim to $8.38 USD")])
+        item, = pending(con)
+        self.assertEqual(item.command, "approve jules 5686851207941248156")
+
+    def test_held_jules_sessions_are_counted(self):
+        """First run of bin/waiting printed "0 things waiting for you" directly
+        above a session that was waiting. Jules holds them; the ledger does not
+        know they exist."""
+        from runner.operator import render
+        out = render([], jules_waiting=[("123", "Fix the thing")])
+        self.assertIn("1 thing waiting for you", out)
+        self.assertIn("blocks progress", out)
+
+    def test_silence_is_reported_as_silence(self):
+        from runner.operator import render
+        self.assertIn("Nothing is waiting", render([], jules_waiting=[]))
+
+    def test_an_unreachable_jules_is_said_out_loud(self):
+        """Failing closed would tell her nothing is waiting when it cannot know."""
+        from runner.operator import render
+        out = render([], jules_waiting=[], jules_error="no JULES_API_KEY")
+        self.assertIn("could not be reached", out)
+
+    @staticmethod
+    def _db(rows):
+        import sqlite3
+        from datetime import datetime, timezone
+        con = sqlite3.connect(":memory:")
+        con.row_factory = sqlite3.Row
+        con.execute("CREATE TABLE human_requests(id INTEGER PRIMARY KEY, at TEXT, "
+                    "kind TEXT, payload TEXT, priority TEXT, deadline TEXT, "
+                    "default_action TEXT, status TEXT)")
+        now = datetime.now(timezone.utc).isoformat()
+        for rid, kind, payload in rows:
+            con.execute("INSERT INTO human_requests VALUES(?,?,?,?,'digest',?,'x',"
+                        "'pending')", (rid, now, kind, payload, now))
+        return con
+
+
 class CiVerdictTest(unittest.TestCase):
     """CHARTER.md §5 authorises merging PRs *that pass CI*. Absence of CI is not
     a pass — a repository with no checks has demonstrated nothing, and treating

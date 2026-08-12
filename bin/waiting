@@ -1,0 +1,78 @@
+#!/usr/bin/env python3
+"""What is waiting for the Operator, in the order she should do it.
+
+    bin/waiting              everything open, plus anything held in Jules
+    bin/waiting --no-jules   ledger only; no network, no key needed
+
+`bin/status` answers "is the system healthy". This answers "what do I have to
+do", which is a different question and was previously answerable only by
+reading four pending rows, a Telegram history and a third-party web UI.
+
+Jules is queried by default and on purpose: on 2026-08-12 the one thing
+genuinely waiting for the Operator was a held session, and nothing in the
+ledger mentioned it. A missing key or no network degrades to a printed note
+rather than an error — a triage tool that fails closed tells her nothing.
+"""
+
+from __future__ import annotations
+
+import sqlite3
+import sys
+from pathlib import Path
+
+ROOT = Path(__file__).resolve().parent.parent
+sys.path.insert(0, str(ROOT))
+
+from runner.operator import pending, render  # noqa: E402
+
+
+def declined(con: sqlite3.Connection) -> set[str]:
+    """Sessions the Operator has already said no to.
+
+    `deny jules <id>` has no API call to make — Jules exposes approvePlan and
+    no counterpart — so a declined session stays AWAITING_USER_FEEDBACK for
+    ever. Without this the view would re-ask about every session she has
+    already refused, which is precisely the nagging that makes a triage tool
+    get ignored. The ledger event written at the time is the only record that
+    the decision happened, so it is the source of truth here.
+    """
+    rows = con.execute(
+        "SELECT message FROM events WHERE source='telegram' "
+        "AND message LIKE 'Operator declined Jules plan for session %'").fetchall()
+    out = set()
+    for r in rows:
+        for chunk in r["message"].split():
+            digits = "".join(c for c in chunk if c.isdigit())
+            if len(digits) > 10:
+                out.add(digits)
+    return out
+
+
+def jules_held(skip: set[str]) -> tuple[list[tuple[str, str]], str]:
+    """Sessions Jules is holding for a human. Never raises."""
+    try:
+        from runner.jules import Jules
+        held = []
+        for s in Jules().sessions():
+            if s.get("state") != "AWAITING_USER_FEEDBACK":
+                continue
+            sid = (s.get("id") or s.get("name", "")).split("/")[-1]
+            if sid in skip:
+                continue
+            held.append((sid, s.get("title") or "(untitled session)"))
+        return held, ""
+    except Exception as exc:  # noqa: BLE001
+        return [], str(exc)[:120]
+
+
+def main(argv: list[str]) -> int:
+    con = sqlite3.connect(f"file:{ROOT / 'ledger.db'}?mode=ro", uri=True)
+    con.row_factory = sqlite3.Row
+
+    held, err = ([], "") if "--no-jules" in argv else jules_held(declined(con))
+    sys.stdout.write(render(pending(con), jules_waiting=held, jules_error=err))
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main(sys.argv[1:]))

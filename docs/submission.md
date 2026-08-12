@@ -405,11 +405,18 @@ housing and scams, Arrival Day from CPH to Lund C, pant and sorting, tvättstuga
 reads the sign and explains the booking rules in context. Note the AI-authorship badge on
 every reply.
 
-**Scene 4 — Refuse and route (1:30–2:10).** Ask "how do I apply for a residence permit?" The
-refusal card returns before any model call is made, naming Migrationsverket and linking to
-it. Show that this is 112 regex patterns in `app/guardrails.py` and not a polite request to the
-model — and that the same scanner runs on the model's output, which is how image-only queries
-are covered.
+**Scene 4 — Refuse and route (1:30–2:20).** Two questions, back to back. First "how do I
+apply for a residence permit?" — the refusal card returns before any model call is made,
+naming Migrationsverket and linking to it. Then "what is 1177?" — which answers, because the
+restriction is on determinations about a person's health, not on the topic of healthcare.
+Until 12 August that second question was refused with a card instructing the user to contact
+1177; the first real user's feedback is what surfaced it (§3). Show that this is 112 regex
+patterns in `app/guardrails.py` and not a polite request to the model, and that the same
+scanner runs on the model's output, which is how image-only queries are covered.
+
+A practical shot list for recording this is in `docs/video-shot-list.md`. Audio is captions
+rather than voiceover, and the video carries no music, per the competition's third-party
+content rule.
 
 **Scene 5 — The operator, and the honest ending (2:10–2:30).** Coral's public log ticking
 over every four hours. Close on the real numbers: one user, zero revenue, $20.45 spent, and a

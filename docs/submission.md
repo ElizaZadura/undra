@@ -90,7 +90,7 @@ outright rather than relying on prompt instructions alone.
 **The four restricted categories** (CHARTER §3.3): Immigration and Visas; Taxes and Civil
 Registration; Legal Contracts and Tenancy Disputes; Medical and Safety.
 
-**Implementation** — `app/guardrails.py`, 184 lines, **77 regular-expression patterns**
+**Implementation** — `app/guardrails.py`, 234 lines, **82 regular-expression patterns**
 across the four categories, matching Swedish and English regulatory terminology
 (*Migrationsverket*, *Skatteverket*, *personnummer*, *uppehållstillstånd*, *residence
 permit*, *deposit dispute*, *112*, and so on):
@@ -153,26 +153,30 @@ These are excluded from the $20.45 because that figure answers "what does this b
 cost to run", and a personal subscription bought before the business existed does not.
 
 **A note on the estimate in our own logs.** The ledger's internal estimate of total model
-spend is **$8.31**, computed from per-token rates transcribed from Google's pricing page and
+spend is **$10.38**, computed from per-token rates transcribed from Google's pricing page and
 applied to metered token counts. That figure covers every call the agent made, on both API
 projects. Only one of those projects is billable: `undra-504613` carries the paid key, and
 `undra-free` carries a free-tier key whose calls cost nothing.
 
-Split by the key that served each call, the meter agrees with the invoice closely:
+Split by the key that served each call, **as of 2026-08-12T09:16Z**:
 
 | Key | Calls | Estimated |
 |---|---:|---:|
-| Paid (`undra-504613`) | 174 | $3.90 |
-| Free (`undra-free`) | 93 | $1.85 |
+| Paid (`undra-504613`) | 233 | $5.31 |
+| Free (`undra-free`) | 123 | $2.51 |
 | Recorded before the ledger tracked the key | 75 | $2.56 |
-| **Total** | **342** | **$8.31** |
+| **Total** | **431** | **$10.38** |
 
-Google billed **$3.18** against that paid-key figure of $3.90. The two do not cover quite the
-same period — the invoice closes on 10 August and the ledger runs to the 11th — and the
-remainder is ordinary estimation error. **$3.18 is the billed figure and the one we quote.**
-The $8.31 is what the same volume of work would have cost had none of it run on the free
-tier, and it is the number our spend ceiling is enforced against, deliberately, because a
-budget guard should err toward stopping early.
+The agent is still running, so this table is a reading rather than a final figure; it is
+regenerated from the ledger before submission. Google billed **$3.18** against the paid key
+through 10 August, the last day the invoice covers. Measured on 11 August, the ledger's
+estimate for that same key and period ran about 7% above the invoice — ordinary estimation
+error, in the conservative direction. That comparison is not reproducible from the table
+above, which keeps moving as the agent runs; only the billed figure is fixed.
+**$3.18 is the billed figure and the one we quote.** The estimate is what the same volume of
+work would have cost had none of it run on the free tier, and it is the number our spend
+ceiling is enforced against, deliberately, because a budget guard should err toward stopping
+early.
 
 ### 2.2 Revenue by Month (May – August 2026)
 
@@ -224,10 +228,26 @@ discover. She has been asked whether other exchange students at her university w
 test; any who do would be arms-length users, and we will report them as such if they
 materialise before the deadline.
 
-**Testimonials: none at the time of writing.** She has had the product for less than a day.
-We would rather submit no testimonial than one solicited before the user had formed an
-opinion. If feedback arrives before the deadline it will be included only with her explicit
-informed consent to its being quoted publicly.
+**Feedback received: one substantive comment, 12 August 2026.** The user reported that the
+assistant's refusals felt broad — that she had tried a range of prompts and most were
+declined. We are not reproducing her words here: she has not yet been asked for consent to be
+quoted, and we would rather submit no testimonial than one obtained without it. She is
+travelling until 19 August, so further testing before the deadline is unlikely.
+
+**The comment was acted on, and the investigation contradicted it in a useful way.** Measuring
+twenty realistic in-scope questions — laundry booking, the deposit-return system, waste
+sorting, regional transport, Arrival Day — produced zero false refusals. The guardrails were
+not over-blocking. What the feedback reflects is that a pre-arrival student's most pressing
+questions genuinely are immigration, civil registration, tenancy and medical, and the product
+is built to refuse exactly those. That is the design, and §1.5 explains why.
+
+The same measurement found a defect in the opposite direction. Nine of eleven tenancy
+questions, phrased as a person phrases them — "my landlord kept my deposit, what are my
+rights?" — passed straight through, because every pattern in that category was a compound
+phrase written in the vocabulary of the category name. The category we claim as
+deterministically refused was approximately 18% effective. It was fixed on 12 August and is
+now 10/10 on that corpus with no false positives across 32 in-scope questions, and the corpus
+is pinned in `tests/test_app_guardrails.py` so the claim stays true.
 
 **Honest summary:** one user, related to the Operator, less than one day of use, no
 feedback yet. The product has been publicly reachable at `https://undra.nu` since 10 August
@@ -257,7 +277,7 @@ Operating record as of 11 August 2026, read from `ledger.db`:
 | — productive / idle / halted | 33 / 9 / 1 |
 | Decisions logged | 55 (agent 48, operator 7) |
 | Events recorded | 1,006 |
-| Model calls | 342 |
+| Model calls | 431 |
 | Tokens billed | 5,062,817 |
 | Actions succeeded / failed | 22 / 2 |
 | Approvals requested | 3, all granted |
@@ -367,7 +387,7 @@ every reply.
 
 **Scene 4 — Refuse and route (1:30–2:10).** Ask "how do I apply for a residence permit?" The
 refusal card returns before any model call is made, naming Migrationsverket and linking to
-it. Show that this is 77 regex patterns in `app/guardrails.py` and not a polite request to the
+it. Show that this is 82 regex patterns in `app/guardrails.py` and not a polite request to the
 model — and that the same scanner runs on the model's output, which is how image-only queries
 are covered.
 

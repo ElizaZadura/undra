@@ -228,10 +228,26 @@ discover. She has been asked whether other exchange students at her university w
 test; any who do would be arms-length users, and we will report them as such if they
 materialise before the deadline.
 
-**Testimonials: none at the time of writing.** She has had the product for less than a day.
-We would rather submit no testimonial than one solicited before the user had formed an
-opinion. If feedback arrives before the deadline it will be included only with her explicit
-informed consent to its being quoted publicly.
+**Feedback received: one substantive comment, 12 August 2026.** The user reported that the
+assistant's refusals felt broad — that she had tried a range of prompts and most were
+declined. We are not reproducing her words here: she has not yet been asked for consent to be
+quoted, and we would rather submit no testimonial than one obtained without it. She is
+travelling until 19 August, so further testing before the deadline is unlikely.
+
+**The comment was acted on, and the investigation contradicted it in a useful way.** Measuring
+twenty realistic in-scope questions — laundry booking, the deposit-return system, waste
+sorting, regional transport, Arrival Day — produced zero false refusals. The guardrails were
+not over-blocking. What the feedback reflects is that a pre-arrival student's most pressing
+questions genuinely are immigration, civil registration, tenancy and medical, and the product
+is built to refuse exactly those. That is the design, and §1.5 explains why.
+
+The same measurement found a defect in the opposite direction. Nine of eleven tenancy
+questions, phrased as a person phrases them — "my landlord kept my deposit, what are my
+rights?" — passed straight through, because every pattern in that category was a compound
+phrase written in the vocabulary of the category name. The category we claim as
+deterministically refused was approximately 18% effective. It was fixed on 12 August and is
+now 10/10 on that corpus with no false positives across 32 in-scope questions, and the corpus
+is pinned in `tests/test_app_guardrails.py` so the claim stays true.
 
 **Honest summary:** one user, related to the Operator, less than one day of use, no
 feedback yet. The product has been publicly reachable at `https://undra.nu` since 10 August

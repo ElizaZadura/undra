@@ -90,7 +90,7 @@ outright rather than relying on prompt instructions alone.
 **The four restricted categories** (CHARTER §3.3): Immigration and Visas; Taxes and Civil
 Registration; Legal Contracts and Tenancy Disputes; Medical and Safety.
 
-**Implementation** — `app/guardrails.py`, 234 lines, **82 regular-expression patterns**
+**Implementation** — `app/guardrails.py`, 277 lines, **112 regular-expression patterns**
 across the four categories, matching Swedish and English regulatory terminology
 (*Migrationsverket*, *Skatteverket*, *personnummer*, *uppehållstillstånd*, *residence
 permit*, *deposit dispute*, *112*, and so on):
@@ -234,12 +234,32 @@ declined. We are not reproducing her words here: she has not yet been asked for 
 quoted, and we would rather submit no testimonial than one obtained without it. She is
 travelling until 19 August, so further testing before the deadline is unlikely.
 
-**The comment was acted on, and the investigation contradicted it in a useful way.** Measuring
-twenty realistic in-scope questions — laundry booking, the deposit-return system, waste
-sorting, regional transport, Arrival Day — produced zero false refusals. The guardrails were
-not over-blocking. What the feedback reflects is that a pre-arrival student's most pressing
-questions genuinely are immigration, civil registration, tenancy and medical, and the product
-is built to refuse exactly those. That is the design, and §1.5 explains why.
+**The comment was acted on, and asking her for specifics overturned our first conclusion.**
+An initial measurement against twenty in-scope questions we wrote ourselves — laundry booking,
+the deposit-return system, waste sorting, regional transport, Arrival Day — produced zero
+false refusals, and we concluded the guardrails were not over-blocking. That conclusion was
+drawn from a corpus we invented. Asked which prompts had actually been blocked, the user named
+three: obtaining a personal identity number, opening a bank account, and how to make a
+doctor's appointment.
+
+The third was a false refusal of a class we had not thought to test. Every pattern in the
+medical category was a bare institution noun — `doctor`, `1177`, `clinic`, `vårdcentral` — so
+naming the institution was the trigger. **Asking "what is 1177?" returned a refusal card
+instructing the user to contact 1177.** The product refused to explain the service it was
+recommending.
+
+That is topic detection, not the restriction the charter describes. What §3.3 forbids is a
+determination about someone's health. Explaining how Swedish healthcare works to a newcomer is
+this product's stated purpose, and refusing it sends the user to a general-purpose chatbot
+that will answer confidently and may be wrong — the exact harm §1.1 identifies. The medical
+category was narrowed on 12 August, with the Operator's explicit recorded approval, to refuse
+symptoms, diagnosis, treatment, urgency and mental-health crisis while answering booking,
+registration and orientation questions. Measured at 16/16 navigation questions answered and
+16/16 determinations still refused, pinned in `tests/test_app_guardrails.py`.
+
+Civil registration was deliberately **not** loosened. Wrong guidance about personnummer
+registration can affect a person's right to remain, and Skatteverket is genuinely the right
+destination. The user's first two blocked topics were correct refusals.
 
 The same measurement found a defect in the opposite direction. Nine of eleven tenancy
 questions, phrased as a person phrases them — "my landlord kept my deposit, what are my
@@ -385,11 +405,18 @@ housing and scams, Arrival Day from CPH to Lund C, pant and sorting, tvättstuga
 reads the sign and explains the booking rules in context. Note the AI-authorship badge on
 every reply.
 
-**Scene 4 — Refuse and route (1:30–2:10).** Ask "how do I apply for a residence permit?" The
-refusal card returns before any model call is made, naming Migrationsverket and linking to
-it. Show that this is 82 regex patterns in `app/guardrails.py` and not a polite request to the
-model — and that the same scanner runs on the model's output, which is how image-only queries
-are covered.
+**Scene 4 — Refuse and route (1:30–2:20).** Two questions, back to back. First "how do I
+apply for a residence permit?" — the refusal card returns before any model call is made,
+naming Migrationsverket and linking to it. Then "what is 1177?" — which answers, because the
+restriction is on determinations about a person's health, not on the topic of healthcare.
+Until 12 August that second question was refused with a card instructing the user to contact
+1177; the first real user's feedback is what surfaced it (§3). Show that this is 112 regex
+patterns in `app/guardrails.py` and not a polite request to the model, and that the same
+scanner runs on the model's output, which is how image-only queries are covered.
+
+A practical shot list for recording this is in `docs/video-shot-list.md`. Audio is captions
+rather than voiceover, and the video carries no music, per the competition's third-party
+content rule.
 
 **Scene 5 — The operator, and the honest ending (2:10–2:30).** Coral's public log ticking
 over every four hours. Close on the real numbers: one user, zero revenue, $20.45 spent, and a

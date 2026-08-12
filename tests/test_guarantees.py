@@ -258,6 +258,76 @@ class PlanApprovalTest(unittest.TestCase):
                         "the chat-id check must precede the Jules approval branch")
 
 
+class ProtectedPathTest(unittest.TestCase):
+    """An agent-authored patch may not edit the rules it runs under, or the
+    checks that decide whether it followed them.
+
+    Observed 2026-08-12. The submission claimed a model no cycle had called;
+    Coral commissioned "fix the audit errors"; Jules added the false model to
+    invariants.toml [models], because that is the list prose_audit checks
+    against. The claim stayed false and the check stopped objecting. It reached
+    an open pull request, and nothing in the landing path had an opinion."""
+
+    def test_the_rules_and_the_checks_are_both_protected(self):
+        from runner.jules import PROTECTED
+        for path in ("CHARTER.md", "invariants.toml", "tests/test_guarantees.py",
+                     "runner/prose_audit.py", "situation_report.py"):
+            self.assertIn(path, PROTECTED,
+                          f"{path} must not be landable by an agent-written patch")
+
+    def test_the_invariants_edit_that_prompted_this_would_be_refused(self):
+        from runner.jules import protected_paths
+        self.assertEqual(
+            protected_paths(["docs/submission.md", "invariants.toml"]),
+            ["invariants.toml"])
+
+    def test_ordinary_work_is_not_blocked(self):
+        from runner.jules import protected_paths
+        self.assertEqual(
+            protected_paths(["docs/submission.md", "app/main.py",
+                             "app/guardrails.py", "runner/cycle.py"]), [])
+
+    def test_a_directory_guard_covers_what_is_under_it(self):
+        from runner.jules import protected_paths
+        self.assertEqual(protected_paths([".claude/settings.json"]),
+                         [".claude/settings.json"])
+        self.assertEqual(protected_paths(["env/keys.env"]), ["env/keys.env"])
+
+    def test_a_leading_dot_slash_does_not_evade_the_guard(self):
+        """git diff headers are stripped to a bare path, but the patch is not
+        ours and its formatting is not something to rely on."""
+        from runner.jules import protected_paths
+        self.assertEqual(protected_paths(["./invariants.toml"]), ["invariants.toml"])
+
+    def test_a_near_miss_filename_is_not_protected(self):
+        """The guard matches whole paths, not prefixes, or docs/CHARTER-notes.md
+        would be unlandable for no reason."""
+        from runner.jules import protected_paths
+        self.assertEqual(protected_paths(["invariants.toml.bak",
+                                          "docs/CHARTER.md"]), [])
+
+    def test_landing_checks_before_it_applies_anything(self):
+        """Ordering matters: the refusal must come before the patch is applied
+        and before a branch is created, or a rejected patch still leaves a
+        branch behind."""
+        src = (Path(__file__).resolve().parents[1] / "runner" / "tools.py").read_text()
+        body = src[src.index("def t_jules_land_task"):]
+        body = body[:body.index("\ndef ")]
+        self.assertLess(body.index("protected_paths("),
+                        body.index("create_branch_with_files("),
+                        "the protected-path check must run before any branch is made")
+
+    def test_the_refusal_is_not_a_grantable_approval(self):
+        """Kinds in [gates].require_approval can be granted, and a granted row
+        is an approval token find_approval() hands back. This escalation reports
+        a refusal; there is nothing to grant."""
+        import tomllib
+        root = Path(__file__).resolve().parents[1]
+        cfg = tomllib.loads((root / "invariants.toml").read_text())
+        self.assertNotIn("PROTECTED_PATH_PATCH",
+                         cfg["gates"]["require_approval"])
+
+
 class CiVerdictTest(unittest.TestCase):
     """CHARTER.md §5 authorises merging PRs *that pass CI*. Absence of CI is not
     a pass — a repository with no checks has demonstrated nothing, and treating

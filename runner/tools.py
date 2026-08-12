@@ -508,6 +508,40 @@ def t_jules_land_task(ctx: ToolContext, *, session_id: str, title: str = "") -> 
     if not files:
         raise ToolError(f"session {session_id} produced a patch touching no files")
 
+    # Refuse before anything is applied. The files in jules.PROTECTED define what
+    # this system may do and check whether it did it; a patch that edits them is
+    # a change to the rules wearing the clothes of ordinary work. Escalate for a
+    # human to apply by hand rather than opening a pull request nobody asked for.
+    from .jules import protected_paths
+    blocked = protected_paths(files)
+    if blocked:
+        names = ", ".join(blocked)
+        ctx.ledger.event(
+            "warn", "jules",
+            f"refused to land session {session_id}: the patch touches {names}, "
+            "which no agent-authored patch may change")
+        # Deliberately NOT a kind in invariants.toml [gates].require_approval.
+        # Those kinds can be granted, and a granted row is an approval token
+        # find_approval() will hand back. This is a report of a refusal, and
+        # there is nothing here for the agent to be granted.
+        ctx.ledger.request_human(
+            kind="PROTECTED_PATH_PATCH",
+            payload=(f"Jules session {session_id} produced a patch touching "
+                     f"{names}. Those files constrain the agent or check its "
+                     f"work, so it was not landed and no pull request was "
+                     f"opened. Read the patch and apply it by hand if it is "
+                     f"right."),
+            priority="digest",
+            deadline=(datetime.now(timezone.utc) + timedelta(hours=12)).isoformat(),
+            default_action="Discard the patch. Do not re-file the task.")
+        raise ToolError(
+            f"the patch from session {session_id} touches {', '.join(blocked)}. "
+            "Those files say what this system is allowed to do and check whether "
+            "it did — they change when the Operator decides they change, not as a "
+            "side effect of a task. This has been escalated. Do not re-file the "
+            "task, and do not work around it: if a document fails an audit, the "
+            "document is what is wrong.")
+
     gh = ctx.github()
     base = "main"
 

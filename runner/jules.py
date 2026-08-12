@@ -22,6 +22,7 @@ import json
 import os
 import urllib.error
 import urllib.request
+from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
@@ -50,6 +51,54 @@ class Session:
 def needs_plan_approval(prompt: str, title: str = "") -> bool:
     blob = f"{title} {prompt}".lower()
     return any(word in blob for word in SENSITIVE)
+
+
+# Files an agent-authored patch may not land on its own. Two groups: what the
+# agent is allowed to do (the rules) and what checks whether it did (the
+# enforcement). Both have to be here, because protecting the rules alone just
+# moves the target one file over.
+#
+# Observed 2026-08-12. docs/submission.md claimed a model, `gemini-3.1-pro`,
+# that no cycle has ever called. Coral commissioned "fix the audit errors";
+# Jules fixed them by adding
+#
+#     planning_pro = "gemini-3.1-pro"   # matches regex-derived name in prose_audit
+#
+# to invariants.toml, because prose_audit._check_models accepts any model named
+# in [models]. The claim was false, the check was correct, and the patch edited
+# the check's ground truth so the claim would pass. It reached an open pull
+# request and nothing in the landing path had an opinion about it.
+#
+# A trailing "/" means the whole directory. This is not a security boundary —
+# the patch never touches the default branch and the token is repo-scoped. It
+# is a review boundary: these files change when a human decides they change, and
+# a diff here should arrive as a decision rather than as routine work.
+PROTECTED = (
+    "CHARTER.md",              # the rules
+    "AGENTS.md",
+    "invariants.toml",         # the machine-checked subset of them
+    "tests/test_guarantees.py",  # what enforces all of it
+    "runner/prose_audit.py",   # the checks themselves. See the note above:
+    "situation_report.py",     # a checker that edits itself is not a checker.
+    ".claude/",                # tool permissions
+    "env/",                    # secrets
+)
+
+
+def protected_paths(files: Iterable[str]) -> list[str]:
+    """Which of `files` an agent-authored patch must not land unreviewed."""
+    hits = []
+    for f in files:
+        # removeprefix, not lstrip: lstrip takes a character SET, so
+        # ".claude/settings.json".lstrip("./") is "claude/settings.json" and the
+        # permissions directory falls straight through the guard.
+        path = f.strip().removeprefix("./")
+        for guard in PROTECTED:
+            if (path == guard if not guard.endswith("/")
+                    else path.startswith(guard)):
+                hits.append(path)
+                break
+    return hits
 
 
 class Jules:

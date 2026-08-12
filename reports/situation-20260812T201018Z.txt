@@ -1,0 +1,81 @@
+==============================================================================
+SITUATION REPORT — 2026-08-12T20:10:18+00:00
+project: undra   invariants v1
+This is the only source of operational fact for this cycle. (CHARTER.md §6.2)
+==============================================================================
+
+-- INVARIANTS: all clear -----------------------------------------------------
+
+-- CLOCK ---------------------------------------------------------------------
+  deadline_utc: 2026-08-17T20:00:00+00:00
+  hours_remaining: 119.8
+
+-- BUDGET --------------------------------------------------------------------
+  spend_total_usd: 28.01  [cap 60.00]
+  spend_llm_usd: 10.74
+  spend_other_usd: 17.27
+  spend_not_agent_usd: 51.43  [real project cost the agent did not incur and cannot stop — human tooling, pre-existing subscriptions. Recorded so a submission can report it; deliberately outside the cap, which bounds the agent]
+  budget_remaining_usd: 31.99
+
+-- RATE COUNTERS -------------------------------------------------------------
+  outbound_last_hour: 0  [max 3]
+  outbound_total: 0  [max 40]
+  deploys_last_hour: 0
+  cycles_last_24h: 6
+  unproductive_cycles_24h: 0
+
+-- LIVENESS ------------------------------------------------------------------
+  halt_flag: False
+  hours_since_ledger_write: 4.0  [max 6]
+  hours_since_cycle: 4.0  [max 6]
+  deploy_url: https://undra.nu  [polled by the watchdog; also serving: undra-dteqnu36ia-lz.a.run.app. These are the only URLs that are this product — any other is not, whatever a document claims]
+  deploy_health: HTTP 200
+
+-- REVENUE -------------------------------------------------------------------
+  arms_length_payments: 0
+  arms_length_gross_usd: 0.00
+  related_party_payments: 0  [must be reported separately in the submission]
+
+-- CODE ----------------------------------------------------------------------
+  git_head: fbd5be9
+  git_branch: main
+  git_uncommitted_files: 0
+  git_unpushed_commits: 0
+
+-- OPEN OBJECTIVES (priority order) ------------------------------------------
+  P1 Prepare Devpost submission narrative, video script outline, and financial summary in docs/submission.md
+  P3 Verify live smoke tests and deployment status for undra app on Cloud Run
+
+-- PENDING APPROVALS (do not block on these) ---------------------------------
+  none
+
+-- OPEN QUESTIONS ------------------------------------------------------------
+  #6 Future improvement, not urgent: switch GitHub Pages from legacy branch-deploy to a GitHub Actions build-and-deploy workflow. Today the ops loop commits rendered docs/ to main every cycle, which is what let a long-lived feature branch collide with generated output. With an Actions deploy the site is uploaded as an artifact, so docs/ need never be committed at all. The catch: the site is rendered from ledger.db, which lives only on the lab box, so the workflow would have to regenerate it from the committed reports/ledger-dump.json instead — publish_log.py currently reads sqlite, not the JSON dump. Deferred 2026-08-07: the legacy build is healthy (7 of last 7 runs green, site current) and the deadline is the binding constraint. Operator's idea.
+  #8 Cloud Run service host returns HTTP 404 on base path and health check routes. Operator verification is required to confirm exact live service target URL and active route configuration.
+
+-- LAST 5 DECISIONS (newest first) -------------------------------------------
+  2026-08-12T16:12 [irreversible] Verified P1 and P3 objective completion and live production liveness.
+  2026-08-12T12:12 Marked Operator notes #5 and #6 as read, verified completion of P1 (docs/submission.md) and P3 (live Cloud Run deployment status).
+  2026-08-12T08:14 Maintained park status for P1 and P2, marked pending approval notes read, and verified P3 production health.
+  2026-08-12T04:15 Escalated P1 docs/submission.md repeated task stalls to Operator and paused filing further P1 Jules tasks.
+  2026-08-12T00:14 Filed targeted Jules tasks for P1 audit fix on PR branch and P2 privacy logging on main, requested plan approval escalation for P2, and confirmed P3 live deployment liveness.
+
+-- PREVIOUS CYCLE HANDOFF ----------------------------------------------------
+  cycle #51 (ok) 2026-08-12T16:11
+  [This cycle fell back to the paid API key: the free key stopped serving and did not recover after backoff. The cause is not knowable from the error — do not report it as an exhausted daily quota.] Cycle #51 Handoff:
+
+1. Verification & Status Check:
+   - Audited docs/submission.md on main: 0 errors (audit_document passed).
+   - Checked live endpoints: https://undra.nu (HTTP 200) and https://undra.nu/api/health (HTTP 200 {"status":"healthy","api_key_configured":true}).
+   - Verified ledger objective status: Objective #1 (docs/submission.md) and Objective #3 (live Cloud Run deployment) are both completed in ledger database.
+
+2. Decisions Logged:
+   - Logged Decision #63 confirming objective completion and production liveness.
+
+3. Next Steps:
+   - Stand by for new Operator notes or objectives.
+   - Maintain routine monitoring of production service at https://undra.nu/api/health.
+
+==============================================================================
+END OF REPORT. Anything not above is not known to you.
+==============================================================================

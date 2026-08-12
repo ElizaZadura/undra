@@ -138,9 +138,20 @@ CREATE TABLE IF NOT EXISTS actions (
   idempotency_key TEXT UNIQUE, status TEXT NOT NULL, attempt INTEGER DEFAULT 1,
   error TEXT, cycle_id INTEGER);
 
+-- counts_against_cap separates two things this table conflated until 2026-08-11:
+-- what the AGENT spent, which the watchdog must halt on, and what the PROJECT
+-- cost, which a submission has to report. A personal subscription bought months
+-- before the business existed is a real cost and belongs in the record; it is
+-- not something the agent chose, cannot stop buying, and must not be able to
+-- trip a guard on the agent's behaviour. Recording one at face value put the
+-- total $1.84 from a spurious warning and would have halted the loop outright.
+--
+-- Default 1, so anything recorded without thinking about it still counts. The
+-- exemption has to be asked for.
 CREATE TABLE IF NOT EXISTS spend (
   id INTEGER PRIMARY KEY, at TEXT NOT NULL, category TEXT NOT NULL,
-  usd REAL NOT NULL, description TEXT, idempotency_key TEXT UNIQUE);
+  usd REAL NOT NULL, description TEXT, idempotency_key TEXT UNIQUE,
+  counts_against_cap INTEGER NOT NULL DEFAULT 1);
 
 -- The API has no hard billing cap, so this table *is* the cap.
 --
@@ -251,12 +262,23 @@ def collect_time(rep: Report, cfg: dict) -> None:
 def collect_budget(rep: Report, con, cfg: dict) -> None:
     b = cfg["budget"]
     llm = q1(con, "SELECT SUM(usd_est) FROM llm_usage")
-    other = q1(con, "SELECT SUM(usd) FROM spend")
+    # Only agent-controllable cost counts toward the ceiling. See the schema
+    # comment on `spend`: the cap exists to bound the agent's behaviour, and a
+    # cost it did not choose and cannot stop cannot be bounded by halting it.
+    other = q1(con, "SELECT SUM(usd) FROM spend WHERE counts_against_cap=1")
+    exempt = q1(con, "SELECT SUM(usd) FROM spend WHERE counts_against_cap=0")
     total = llm + other
     rep.add(Fact("spend_llm_usd", f"{llm:.2f}", source="ledger.llm_usage"))
     rep.add(Fact("spend_other_usd", f"{other:.2f}", source="ledger.spend"))
     rep.add(Fact("spend_total_usd", f"{total:.2f}", source="computed",
                  note=f"cap {b['hard_cap_total']:.2f}"))
+    if exempt:
+        rep.add(Fact("spend_not_agent_usd", f"{exempt:.2f}",
+                     source="ledger.spend counts_against_cap=0",
+                     note=("real project cost the agent did not incur and cannot "
+                           "stop — human tooling, pre-existing subscriptions. "
+                           "Recorded so a submission can report it; deliberately "
+                           "outside the cap, which bounds the agent")))
     rep.add(Fact("budget_remaining_usd", f"{b['hard_cap_total'] - total:.2f}", source="computed"))
 
     threshold = b["halt_at_pct"] / 100
@@ -685,7 +707,7 @@ def render(rep: Report, cfg: dict) -> str:
     groups = {
         "CLOCK": ("deadline_utc", "hours_remaining"),
         "BUDGET": ("spend_total_usd", "spend_llm_usd", "spend_other_usd",
-                   "budget_remaining_usd"),
+                   "spend_not_agent_usd", "budget_remaining_usd"),
         "RATE COUNTERS": ("outbound_last_hour", "outbound_total",
                           "deploys_last_hour", "cycles_last_24h",
                           "unproductive_cycles_24h"),

@@ -58,10 +58,19 @@ from typing import Any, Iterable
 # It reported ten findings on the submission and confidently missed both.
 _FENCE = re.compile(r"```.*?```", re.S)
 
+# An explicit, visible marker for figures a document quotes in order to disclose
+# them as false. See _split_disclosed: every use is counted and reported.
+_DISCLOSED = re.compile(
+    r"<!--\s*audit:disclosed\s*-->.*?<!--\s*/audit:disclosed\s*-->", re.S | re.I)
+
+# A trailing comma must not be swallowed as a thousands separator: "invoice
+# 202680231, kr 79.00" otherwise reads as a claim of 202,680,231 kr. And a
+# currency followed by "=" is an exchange rate, not an amount spent — "1 SEK =
+# 0.10538 USD" is how an honest conversion states its source.
 _MONEY = re.compile(r"""
     (?:
-        (?P<usd>\$\s?(?P<usd_n>\d[\d,]*(?:\.\d+)?))          # $15.00, $ 5
-      | (?P<sek>(?P<sek_n>\d[\d,]*(?:\.\d+)?)\s?(?:SEK|kr\b)) # 100 SEK, 30 kr
+        (?P<usd>\$\s?(?P<usd_n>\d[\d,]*\d|\d)(?P<usd_d>\.\d+)?)
+      | (?P<sek>(?P<sek_n>\d[\d,]*\d|\d)(?P<sek_d>\.\d+)?\s?(?:SEK|kr\b)(?!\s*=))
     )""", re.X | re.I)
 
 _MODEL = re.compile(r"\bgemini-[a-z0-9.\-]+", re.I)
@@ -81,6 +90,20 @@ _MONTHS = {m: i for i, m in enumerate(
 # Round numbers that are almost never a claim about spend: version strings,
 # percentages already matched elsewhere, and zero.
 _MONEY_IGNORE = {"0", "0.00", "0.0"}
+
+# Phrases that answer "was there nothing here, or did nobody measure?" — the
+# question _check_months exists to force. Matched near the month, not anywhere.
+# NOT "$0.00" or "zero". The fabrication this check exists to catch reported
+# July revenue as $0.00 — which was true — and then narrated a "local
+# infrastructure setup and operational charter design phase" for a month in
+# which the project did not exist. The zero was never the lie. Only an explicit
+# statement about existence answers the question.
+_MONTH_DISCLAIMED = (
+    "did not exist", "didn't exist", "did not yet exist", "no business",
+    "before the project", "predates", "precedes the project",
+    "no work of any kind", "nothing was recorded", "nothing existed",
+    "predate", "predating",
+)
 
 
 @dataclass
@@ -105,6 +128,7 @@ class Ground:
     spend_usd: float
     llm_usd: float
     line_items: set[float]     # each recorded cost, so itemised tables work
+    llm_by_key: set[float]     # model spend split by the key that served it
     caps: set[float]           # budget ceilings are legitimate to quote
     models: set[str]
     configured_models: set[str]
@@ -165,6 +189,19 @@ class Ground:
         except sqlite3.Error:
             pass
 
+        # Model spend split by the key that served each call. Quoting the split
+        # is how a document explains why an estimate and an invoice differ —
+        # the free key's calls are metered and never billed — and refusing it
+        # forces the writer back to a single total that hides the distinction.
+        # Ledger-derived like every other figure here.
+        by_key = set()
+        try:
+            by_key = {round(float(r[0]), 2) for r in con.execute(
+                "SELECT SUM(usd_est) FROM llm_usage GROUP BY "
+                "COALESCE(NULLIF(key_role,''),'?')") if r[0]}
+        except sqlite3.Error:
+            pass
+
         caps = {float(v) for k, v in (cfg.get("budget") or {}).items()
                 if isinstance(v, (int, float)) and str(k).startswith(("cap", "hard"))}
 
@@ -172,6 +209,7 @@ class Ground:
             spend_usd=llm + other,
             llm_usd=llm,
             line_items=items,
+            llm_by_key=by_key,
             caps=caps,
             models=models,
             configured_models=cfgmodels,
@@ -184,6 +222,46 @@ class Ground:
 
 def _strip_code(text: str) -> str:
     return _FENCE.sub(" ", text)
+
+
+def _split_disclosed(text: str) -> tuple[str, int]:
+    """Separate text a document explicitly marks as quoting a known-false figure.
+
+    A document that discloses its own past fabrication has to restate the false
+    numbers to disclose them. This checker cannot tell "the domain cost $10.00"
+    from "we wrongly claimed the domain cost $10.00", and refusing both makes an
+    honest retraction impossible to write — which is how a gate against
+    fabrication ends up suppressing the correction of one.
+
+    The fence is deliberately ugly and deliberately counted. Its use is reported
+    every time, so suppression is visible in the output rather than silent, and
+    a reviewer can see exactly how much text was exempted and go read it.
+
+        <!-- audit:disclosed --> ...known-false figures... <!-- /audit:disclosed -->
+    """
+    n = len(_DISCLOSED.findall(text))
+    return _DISCLOSED.sub(" ", text), n
+
+
+def _subset_sums(items: set[float], limit: int = 14) -> set[float]:
+    """Every total reachable by adding recorded line items together.
+
+    A cost breakdown that lists four invoices and then totals them is the normal
+    shape of a financial section, and a checker that accepts each row but not
+    their sum forces the writer to drop either the total or the itemisation.
+    Every value here is derived from rows that already carry evidence, so this
+    widens what is quotable without admitting anything unrecorded.
+
+    Matched to the cent rather than the 2% used for single rows: a sum of exact
+    figures is exact, and loose tolerance over 2^n combinations would start
+    accepting arbitrary numbers.
+    """
+    vals = sorted(items)[:limit]
+    sums = {0.0}
+    for v in vals:
+        sums |= {round(s + v, 2) for s in sums}
+    sums.discard(0.0)
+    return sums
 
 
 def _num(s: str) -> float:
@@ -212,16 +290,21 @@ def _check_money(text: str, g: Ground, sek_per_usd: float) -> Iterable[Finding]:
     # value as evidence of expenditure opens a hole at exactly the round numbers
     # invented figures favour. Caps get a warning of their own below instead.
     known = ({round(g.spend_usd, 2), round(g.llm_usd, 2),
-              round(g.revenue_usd, 2), 0.0} | g.line_items)
+              round(g.revenue_usd, 2), 0.0} | g.line_items | g.llm_by_key)
+    # Sums of recorded rows, matched exactly. Kept separate from `known` because
+    # `known` carries a 2% tolerance that must not be applied to combinations.
+    sums = _subset_sums(g.line_items)
     for m in _MONEY.finditer(text):
         raw = m.group(0).strip()
         if m.group("usd_n"):
-            n = _num(m.group("usd_n"))
+            n = _num(m.group("usd_n") + (m.group("usd_d") or ""))
         else:
-            n = _num(m.group("sek_n")) / sek_per_usd
+            n = _num(m.group("sek_n") + (m.group("sek_d") or "")) / sek_per_usd
         if raw.lstrip("$ ").rstrip() in _MONEY_IGNORE or n == 0:
             continue
         if any(abs(n - k) <= max(0.01, k * 0.02) for k in known):
+            continue
+        if any(abs(n - t) <= 0.01 for t in sums):
             continue
         if any(abs(n - c) <= 0.01 for c in g.caps):
             yield Finding(
@@ -272,6 +355,15 @@ def _check_months(text: str, g: Ground) -> Iterable[Finding]:
         month, year = _MONTHS[m.group(1).lower()], int(m.group(2))
         if (year, month) >= (start.year, start.month):
             continue
+        # The finding's own demand is "say which, rather than narrating
+        # activity". A document that answers it — stating a zero, or that the
+        # project did not exist — has complied, and refusing it anyway would
+        # make the required disclosure impossible to write. The fabrication this
+        # catches read "July: local infrastructure setup and operational charter
+        # design phase": activity, no zero, no denial.
+        window = text[max(0, m.start() - 300):m.end() + 300].lower()
+        if any(p in window for p in _MONTH_DISCLAIMED):
+            continue
         yield Finding(
             "error", "month", m.group(0),
             f"precedes the project. The first ledger row is "
@@ -313,8 +405,14 @@ def _check_hosts(text: str, g: Ground) -> Iterable[Finding]:
 def audit(text: str, con: sqlite3.Connection, cfg: dict) -> list[Finding]:
     g = Ground.read(con, cfg)
     sek = float((cfg.get("budget") or {}).get("sek_per_usd", 10.0))
-    body = _strip_code(text)
+    body, disclosed = _split_disclosed(_strip_code(text))
     out: list[Finding] = []
+    if disclosed:
+        out.append(Finding(
+            "warn", "disclosed", f"{disclosed} region(s)",
+            "figures inside an `audit:disclosed` fence were not checked. That "
+            "fence is for quoting a known-false number in order to retract it. "
+            "Read those passages: nothing else in this report covers them."))
     for check in (lambda: _check_money(body, g, sek),
                   lambda: _check_models(body, g),
                   lambda: _check_months(body, g),

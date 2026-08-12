@@ -58,6 +58,11 @@ def main(argv: list[str]) -> int:
                    help="Mark this as an estimate rather than a billed amount. "
                         "Prefixed in the row so no document can quote it as "
                         "measured.")
+    p.add_argument("--not-agent-spend", action="store_true",
+                   help="A real cost the AGENT did not incur and cannot stop — "
+                        "human tooling, a subscription that predates the project. "
+                        "Recorded and quotable, but kept out of the cap that halts "
+                        "the loop, because halting the agent cannot un-buy it.")
     p.add_argument("--list", action="store_true", help="Show recorded costs.")
     args = p.parse_args(argv[1:])
 
@@ -77,16 +82,31 @@ def main(argv: list[str]) -> int:
             print("No non-API costs recorded.\n"
                   "Anything not in here cannot honestly appear in a document.")
         else:
-            total = 0.0
+            total = exempt = 0.0
             for r in rows:
                 total += r["usd"]
-                print(f"  {r['at'][:10]}  {r['category']:13} ${r['usd']:>8.2f}  "
-                      f"{r['description']}")
+                capped = bool(r["counts_against_cap"])
+                if not capped:
+                    exempt += r["usd"]
+                print(f"  {r['at'][:10]}  {r['category']:13} ${r['usd']:>8.2f}"
+                      f"{'  ' if capped else ' *'}{r['description']}")
             print(f"  {'':10}  {'TOTAL':13} ${total:>8.2f}")
+            if exempt:
+                print(f"  {'':10}  {'of which *':13} ${exempt:>8.2f}  not the agent's "
+                      f"spend; recorded and quotable, outside the cap")
         print(f"\nLLM spend (estimated from transcribed rates): "
               f"${led.llm_spend_usd():.2f}")
-        print(f"Combined total:                               "
+        print(f"Counts against the cap:                       "
               f"${led.spend_total_usd():.2f}")
+        # Deliberately no grand total. A billed API figure recorded above
+        # describes the same spending as part of the llm_usage estimate, so
+        # adding every number on this screen together double-counts it. Printing
+        # a wrong aggregate because it looks tidy is the habit this whole table
+        # exists to break; the rows carry the detail, and a document should
+        # state which components it is adding.
+        print("No grand total is printed: a billed API row and the llm_usage "
+              "estimate\ncan describe the same calls. Add the components you "
+              "mean, and say which.")
         led.close()
         return 0
 
@@ -109,7 +129,8 @@ def main(argv: list[str]) -> int:
 
     try:
         rid = led.record_spend(category=args.category, usd=args.usd,
-                               description=desc, idempotency_key=key)
+                               description=desc, idempotency_key=key,
+                               counts_against_cap=not args.not_agent_spend)
     except ValueError as exc:
         print(f"refused: {exc}", file=sys.stderr)
         led.close()

@@ -149,7 +149,12 @@ async def chat(
 
             # Use the clean, metadata-free in-memory image for Gemini
             pil_img = Image.open(out_buf)
-            logger.info(f"Successfully processed image '{image.filename}' in-memory and stripped EXIF.")
+            # Deliberately not the filename. A name like "uppehallstillstand_anna.jpg"
+            # is personal data, and Cloud Run logs are durable storage — this was the
+            # only path by which a user's own words reached it. Size and format are
+            # what debugging actually needs.
+            logger.info("Successfully processed image in-memory and stripped EXIF "
+                        f"({out_buf.getbuffer().nbytes} bytes, {save_format}).")
         except Exception as e:
             logger.error(f"Error stripping EXIF or reading image: {e}")
             raise HTTPException(status_code=400, detail="Invalid image file or format.")

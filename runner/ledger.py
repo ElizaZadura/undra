@@ -124,7 +124,7 @@ class Ledger:
     # -- non-LLM expenditure ------------------------------------------------ #
 
     def record_spend(self, *, category: str, usd: float, description: str,
-                     idempotency_key: str) -> int:
+                     idempotency_key: str, counts_against_cap: bool = True) -> int:
         """Record a real cost that is not an API call. Evidence is mandatory.
 
         Until 2026-08-10 this table had a reader — the watchdog totals it, and
@@ -143,6 +143,18 @@ class Ledger:
         of this row is not the number; the number was always guessable. The
         point is that the number can be checked by someone who doubts it, which
         is the only property that distinguishes a figure from a claim.
+
+        `counts_against_cap=False` records a real, evidenced cost that the agent
+        did not incur and cannot stop incurring — a personal subscription that
+        predates the business, tooling the humans used to build it. Such a cost
+        belongs in the record, because a submission has to report total expenses
+        honestly, and must not reach the watchdog, because that guard exists to
+        halt the AGENT and halting it cannot un-buy a subscription. Recording one
+        at face value on 2026-08-11 put the total $1.84 from a spurious warning
+        and would have stopped the loop six days before the deadline.
+
+        It defaults to True. An exemption has to be asked for, so the failure
+        mode is an over-counted cap rather than a silently uncapped one.
         """
         if not description or len(description.strip()) < 12:
             raise ValueError(
@@ -153,9 +165,10 @@ class Ledger:
             raise ValueError("negative spend: record a refund as its own row "
                              "with the reason, do not net it off")
         cur = self.con.execute(
-            "INSERT INTO spend(at, category, usd, description, idempotency_key) "
-            "VALUES(?,?,?,?,?)",
-            (utcnow(), category, float(usd), description.strip(), idempotency_key))
+            "INSERT INTO spend(at, category, usd, description, idempotency_key, "
+            "counts_against_cap) VALUES(?,?,?,?,?,?)",
+            (utcnow(), category, float(usd), description.strip(), idempotency_key,
+             1 if counts_against_cap else 0))
         self.con.commit()
         return int(cur.lastrowid)
 
@@ -164,6 +177,16 @@ class Ledger:
             "SELECT * FROM spend ORDER BY at").fetchall()
 
     def spend_total_usd(self) -> float:
+        """What counts against the cap. Cap-exempt rows are deliberately absent:
+        this feeds the halt decision, and `spend_recorded_usd` is what a document
+        should quote for total project cost."""
+        llm = self.con.execute("SELECT COALESCE(SUM(usd_est),0) FROM llm_usage").fetchone()[0]
+        other = self.con.execute(
+            "SELECT COALESCE(SUM(usd),0) FROM spend WHERE counts_against_cap=1").fetchone()[0]
+        return float(llm) + float(other)
+
+    def spend_recorded_usd(self) -> float:
+        """Every evidenced cost, cap-exempt or not. For reporting, never for gating."""
         llm = self.con.execute("SELECT COALESCE(SUM(usd_est),0) FROM llm_usage").fetchone()[0]
         other = self.con.execute("SELECT COALESCE(SUM(usd),0) FROM spend").fetchone()[0]
         return float(llm) + float(other)

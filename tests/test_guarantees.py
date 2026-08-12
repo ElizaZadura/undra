@@ -538,6 +538,77 @@ class ProseAuditTest(unittest.TestCase):
         self.assertEqual([f.severity for f in found], ["warn"],
                          "a cap must neither pass silently nor read as a cost")
 
+    def test_stating_that_the_month_predates_the_project_is_accepted(self):
+        """The finding demands "say which, rather than narrating activity". A
+        document that says it is not narrating activity has complied, and
+        refusing it anyway makes the required disclosure impossible to write."""
+        self.assertEqual(self._kinds(
+            "| **July 2026** | $0.00 |\n\nUndra did not exist before 3 August 2026."),
+            set())
+
+    def test_a_zero_is_not_a_disclaimer(self):
+        """The fabricated table reported July revenue as $0.00 — which was true
+        — and then narrated a setup phase for a month in which nothing existed.
+        The zero was never the lie, so it cannot be what clears the check."""
+        self.assertIn("month", self._kinds(
+            "| **July 2026** | $0.00 | Charter design phase. |"))
+
+    # -- adding up recorded costs ------------------------------------------- #
+
+    def _two_costs(self):
+        for i, usd in enumerate((10.41, 6.85)):
+            self.con.execute(
+                "INSERT INTO spend(at, category, usd, description, idempotency_key) "
+                "VALUES('2026-08-11','domain',?,?,?)",
+                (usd, "Hostup invoice 202680231 dated 2026-08-04", f"k{i}"))
+        self.con.commit()
+
+    def test_a_total_of_recorded_line_items_is_quotable(self):
+        """A breakdown that lists invoices and then totals them is the normal
+        shape of a financial section. Accepting each row but not their sum
+        forces a choice between the total and the itemisation."""
+        self._two_costs()
+        self.assertEqual(self._kinds("Domain $10.41 and tooling $6.85, $17.26 in all."),
+                         set())
+
+    def test_a_sum_that_uses_an_unrecorded_figure_is_still_refused(self):
+        """The exemption is for combinations of evidenced rows, not for
+        arithmetic that quietly introduces a new one."""
+        self._two_costs()
+        self.assertIn("money", self._kinds("Costs came to $30.00."))
+
+    def test_sums_are_matched_to_the_cent(self):
+        """Single rows carry a 2% tolerance. Applying that across every
+        combination would start accepting arbitrary numbers: with rows at 10.41
+        and 6.85 a 2% band on 17.26 would swallow anything up to ~17.60."""
+        self._two_costs()
+        self.assertIn("money", self._kinds("Costs came to $17.50."))
+
+    # -- disclosing a figure known to be false ------------------------------- #
+
+    def test_a_fabrication_can_be_quoted_in_order_to_retract_it(self):
+        """A document disclosing its own past fabrication has to restate the
+        false number. Refusing that makes an honest retraction impossible to
+        write, which is how a gate against fabrication suppresses the
+        correction of one."""
+        text = ("We wrongly claimed "
+                "<!-- audit:disclosed -->the domain cost $10.00 and power $3.00"
+                "<!-- /audit:disclosed --> — neither figure had a source.")
+        from runner import prose_audit
+        self.assertEqual(prose_audit.errors(self._audit(text)), [])
+
+    def test_using_the_fence_is_always_reported(self):
+        """Silent suppression would make the fence a hole. Every use is counted
+        and surfaced so a reviewer knows to go read the passage."""
+        text = "<!-- audit:disclosed -->$10.00<!-- /audit:disclosed -->"
+        found = self._audit(text)
+        self.assertEqual([f.kind for f in found], ["disclosed"])
+        self.assertEqual(found[0].severity, "warn")
+
+    def test_the_fence_does_not_leak_past_its_close(self):
+        text = ("<!-- audit:disclosed -->$10.00<!-- /audit:disclosed --> "
+                "and then we spent $99.00.")
+        self.assertIn("money", self._kinds(text))
 
     # -- the gate ------------------------------------------------------------ #
 
@@ -608,6 +679,47 @@ class LedgerSpendTest(unittest.TestCase):
             self.led.record_spend(category="domain", usd=-5.0,
                                   description="refund for the duplicate order",
                                   idempotency_key="spend:neg")
+
+    # -- what the agent spent versus what the project cost ------------------ #
+
+    def _sub(self, **kw):
+        base = dict(category="subscription", usd=26.58,
+                    description="ChatGPT Plus, OpenAI order sub_1Rlu59, shared",
+                    idempotency_key="spend:sub")
+        base.update(kw)
+        return self.led.record_spend(**base)
+
+    def test_a_cost_counts_against_the_cap_unless_exempted(self):
+        """Default 1. An exemption has to be asked for, so the failure mode is
+        an over-counted cap rather than a silently uncapped one."""
+        self._sub()
+        self.assertAlmostEqual(self.led.spend_total_usd(), 26.58, places=2)
+
+    def test_human_tooling_can_be_recorded_without_reaching_the_cap(self):
+        """`spend` feeds the watchdog that halts the agent. A subscription
+        bought before the business existed is a real cost and belongs in the
+        record, but halting the agent cannot un-buy it. Recording one at face
+        value on 2026-08-11 would have stopped the loop six days before the
+        deadline."""
+        self._sub(counts_against_cap=False)
+        self.assertEqual(self.led.spend_total_usd(), 0.0,
+                         "a cost the agent cannot control reached the halt guard")
+        self.assertAlmostEqual(self.led.spend_recorded_usd(), 26.58, places=2)
+
+    def test_the_watchdog_reads_the_same_distinction(self):
+        """The exemption is worthless if situation_report totals the raw column:
+        the guard would still halt on it."""
+        import situation_report as sr
+        src = inspect.getsource(sr.collect_budget)
+        self.assertIn("counts_against_cap=1", src)
+        self.assertIn("spend_not_agent_usd", src)
+
+    def test_the_exempt_fact_is_actually_rendered(self):
+        """A fact absent from render()'s group table is computed and dropped —
+        the same defect found on 8 August with git_unpushed_commits."""
+        import situation_report as sr
+        self.assertIn("spend_not_agent_usd", inspect.getsource(sr.render))
+
 
 class DeployIdentityTest(unittest.TestCase):
     """A health grade with no host is not an operational fact.

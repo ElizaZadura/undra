@@ -91,7 +91,57 @@ REFUSAL_CATEGORIES = {
             r"\bdeposit dispute\b",
             r"\bsecurity deposit\b",
             r"\btenancy agreement\b",
-            r"\blegal scam\b"
+            r"\blegal scam\b",
+
+            # --- co-occurrence patterns, added 2026-08-12 ------------------ #
+            #
+            # Everything above is a compound phrase written in the vocabulary
+            # of the category name. Measured against how people actually type,
+            # nine of eleven tenancy questions passed straight through:
+            # "my landlord kept my deposit, what are my rights?", "what are my
+            # rights as a tenant?", "the apartment has mould, does the landlord
+            # have to fix it?". Nobody in trouble writes "tenancy dispute".
+            #
+            # These match a HOUSING term co-occurring with a RIGHTS-or-DISPUTE
+            # term, in either order, anywhere in the query.
+            #
+            # Bare "deposit" is deliberately NOT a trigger. In this product it
+            # usually means *pant* — the bottle deposit is the flagship feature,
+            # and refusing "how do I get my deposit back?" would break the thing
+            # Undra exists to explain. That ambiguity is left to the
+            # post-generation scanner: if the model answers a bare "deposit"
+            # question by talking about landlords, the same patterns catch it
+            # on the way out.
+            (r"(?=.*\b(landlord|hyresvärd|tenant|hyresgäst|tenancy|lease|"
+             r"sublet|sublease|andrahand|inneboende|rental|apartment|flat|"
+             r"corridor room|accommodation|housing contract)\b)"
+             r"(?=.*\b(right|rights|entitled|obliged|obligated|liable|"
+             r"allowed to|can they|legal|illegal|unlawful|breach|dispute|"
+             r"complain|court|notice period|terminate|evict)\b)"),
+
+            (r"(?=.*\b(landlord|hyresvärd|tenancy|lease|rental|sublet|"
+             r"andrahand|apartment)\b)"
+             r"(?=.*\b(deposit|deposits|deposition)\b)"),
+
+            (r"(?=.*\b(landlord|hyresvärd)\b)"
+             r"(?=.*\b(kept|keeping|withhold|withheld|refus|owe|owes|"
+             r"has to fix|have to fix|must fix|responsible)\b)"),
+
+            # Contract terms someone is questioning the validity of. "contract"
+            # is kept out of the housing list above because it is common and
+            # harmless on its own; here it must sit next to a challenge.
+            (r"(?=.*\b(contract|agreement|clause)\b)"
+             r"(?=.*\b(can they|are they allowed|is that legal|is this legal|"
+             r"is it legal|valid|binding|enforceable|get out of|break)\b)"),
+
+            # Notice periods and rent withholding are both regulated, and both
+            # arrive phrased as practical questions rather than legal ones.
+            # "pay rent" as a phrase, not \brent\b, so "pay to rent a bike"
+            # does not match.
+            r"\bhow (much|long|many days|many months) notice\b",
+            (r"(?=.*\bpay(?:ing)?\s+(?:the\s+)?rent\b)"
+             r"(?=.*\b(have to|has to|must|obliged|withhold|refuse|stop|"
+             r"broken|not working|no heating|mould|repair)\b)"),
         ],
         "message": (
             "I cannot provide advice on legal contracts, tenancy agreements, lease disputes, or legal conflicts with landlords. "

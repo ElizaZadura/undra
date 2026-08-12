@@ -237,7 +237,22 @@ def process_updates(tg: Telegram, ledger, updates: list[Update]) -> int | None:
         # other approval, from the one chat id that is checked above.
         if len(parts) == 3 and parts[0] in ("approve", "deny") and parts[1] == "jules":
             session_id = parts[2]
+
+            # The request row raised when the task was filed is keyed by session
+            # id in its payload, not by request id, because the command the
+            # Operator types names the session. Resolve it here or it stays
+            # pending forever: nothing else closes a JULES_PLAN_APPROVAL, and an
+            # open request re-appears in every digest until it does.
+            def _close(status: str) -> None:
+                ledger.con.execute(
+                    "UPDATE human_requests SET status=?, resolved_at=datetime('now'), "
+                    "response=? WHERE kind='JULES_PLAN_APPROVAL' AND status='pending' "
+                    "AND payload LIKE ?",
+                    (status, f"{parts[0]} jules {session_id}", f"%{session_id}%"))
+                ledger.con.commit()
+
             if parts[0] == "deny":
+                _close("denied")
                 ledger.event("info", "telegram",
                              f"Operator declined Jules plan for session {session_id}; "
                              "the session stays paused and needs re-filing or a "
@@ -255,6 +270,7 @@ def process_updates(tg: Telegram, ledger, updates: list[Update]) -> int | None:
                 except Exception:  # noqa: BLE001
                     pass
                 continue
+            _close("granted")
             ledger.event("info", "telegram",
                          f"Operator approved the Jules plan for session {session_id}")
             try:

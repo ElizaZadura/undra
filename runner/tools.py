@@ -472,6 +472,45 @@ def t_jules_file_task(ctx: ToolContext, *, title: str, prompt: str,
             repo=repo, prompt=prompt, title=title, branch=branch,
             require_plan_approval=plan_approval, ledger=ctx.ledger)
 
+    # A task held at plan approval cannot move without the Operator, so she has
+    # to be told it exists. Until 2026-08-12 this branch told only Coral: the
+    # session was created with requirePlanApproval, the note below explained the
+    # consequence to the agent, and nothing reached Telegram. `approve jules
+    # <id>` has worked since 2026-08-07 and no message has ever handed her an id
+    # to type into it. Sessions sat for days; the loop eventually escalated them
+    # as stalled work, with the wrong cause attached.
+    if plan_approval:
+        rid = ctx.ledger.request_human(
+            kind="JULES_PLAN_APPROVAL",
+            payload=(f"Jules session {session.id} — {title}\n\n"
+                     f"Held at plan approval because the task mentions payments, "
+                     f"auth or user data (AGENTS.md #10). Jules has written a "
+                     f"plan and will not touch code until it is released."),
+            priority="digest",
+            deadline=(datetime.now(timezone.utc) + timedelta(hours=12)).isoformat(),
+            default_action="Leave the session paused. It writes no code.")
+        if ctx.telegram:
+            try:
+                # Not request_approval(): that prints `approve <request_id>`, and
+                # a Jules plan is released through the Jules API by session id.
+                # Two different commands; printing the wrong one is how an
+                # approval goes to the wrong place.
+                ctx.telegram.send(
+                    f"[undra · Jules plan waiting]\n\n"
+                    f"#{rid}  {title}\n\n"
+                    f"Held because the task touches payments, auth or user data. "
+                    f"Jules has a plan and will not write code until released.\n\n"
+                    f"reply exactly:  approve jules {session.id}"
+                    f"   or   deny jules {session.id}\n\n"
+                    f"(automated message from the undra agent system)")
+                ctx.ledger.con.execute(
+                    "UPDATE human_requests SET notified_at=datetime('now') WHERE id=?",
+                    (rid,))
+                ctx.ledger.con.commit()
+            except Exception as exc:  # noqa: BLE001
+                ctx.ledger.event("error", "telegram",
+                                 f"Jules plan request #{rid} undelivered: {exc}")
+
     ctx.cycle.note_productive()
     return {
         "session_id": session.id,
@@ -481,7 +520,8 @@ def t_jules_file_task(ctx: ToolContext, *, title: str, prompt: str,
         "note": ("Filed. Do not wait for it — Jules works asynchronously and a "
                  "later cycle will see the result. Check with jules_task_status."
                  + (" This task touches payments, auth or user data, so it needs "
-                    "plan approval before Jules will act (AGENTS.md #10)."
+                    "plan approval before Jules will act (AGENTS.md #10). The "
+                    "Operator has been notified; do not escalate it as stalled."
                     if plan_approval else "")),
     }
 

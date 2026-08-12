@@ -317,6 +317,41 @@ class ProtectedPathTest(unittest.TestCase):
                         body.index("create_branch_with_files("),
                         "the protected-path check must run before any branch is made")
 
+    def test_a_plan_held_for_approval_reaches_the_operator(self):
+        """A task Jules will not start without her is worth nothing if she is
+        never told it exists. Sessions sat for days before 2026-08-12 because
+        this branch spoke only to Coral."""
+        src = (Path(__file__).resolve().parents[1] / "runner" / "tools.py").read_text()
+        body = src[src.index("def t_jules_file_task"):]
+        body = body[:body.index("\ndef t_jules_land_task")]
+        self.assertIn("JULES_PLAN_APPROVAL", body,
+                      "filing a plan-gated task must raise a request row")
+        self.assertIn("approve jules", body,
+                      "the notification must carry the command she has to type")
+
+    def test_the_notification_names_the_session_not_the_request(self):
+        """`approve <request_id>` resolves a ledger row; `approve jules <id>`
+        calls the Jules API. Printing the first for a plan approval sends her to
+        a command that closes the record without releasing the session."""
+        src = (Path(__file__).resolve().parents[1] / "runner" / "tools.py").read_text()
+        body = src[src.index("def t_jules_file_task"):]
+        body = body[:body.index("\ndef t_jules_land_task")]
+        # The call site, not any mention: a comment explaining why this branch
+        # avoids request_approval() must not itself trip the check.
+        self.assertNotIn("ctx.telegram.request_approval(", body)
+        self.assertIn("approve jules {session.id}", body)
+
+    def test_releasing_a_plan_closes_its_request(self):
+        """Otherwise the row stays pending and every digest re-reports work that
+        is already done."""
+        src = (Path(__file__).resolve().parents[1] / "runner" / "telegram.py").read_text()
+        branch = src[src.index('parts[1] == "jules"'):]
+        branch = branch[:branch.index("if len(parts) == 2")]
+        self.assertIn("JULES_PLAN_APPROVAL", branch)
+        for outcome in ('_close("granted")', '_close("denied")'):
+            self.assertIn(outcome, branch,
+                          f"{outcome} missing: both replies must resolve the row")
+
     def test_the_refusal_is_not_a_grantable_approval(self):
         """Kinds in [gates].require_approval can be granted, and a granted row
         is an approval token find_approval() hands back. This escalation reports

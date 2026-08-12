@@ -90,7 +90,7 @@ outright rather than relying on prompt instructions alone.
 **The four restricted categories** (CHARTER §3.3): Immigration and Visas; Taxes and Civil
 Registration; Legal Contracts and Tenancy Disputes; Medical and Safety.
 
-**Implementation** — `app/guardrails.py`, 184 lines, **77 regular-expression patterns**
+**Implementation** — `app/guardrails.py`, 234 lines, **82 regular-expression patterns**
 across the four categories, matching Swedish and English regulatory terminology
 (*Migrationsverket*, *Skatteverket*, *personnummer*, *uppehållstillstånd*, *residence
 permit*, *deposit dispute*, *112*, and so on):
@@ -371,7 +371,7 @@ every reply.
 
 **Scene 4 — Refuse and route (1:30–2:10).** Ask "how do I apply for a residence permit?" The
 refusal card returns before any model call is made, naming Migrationsverket and linking to
-it. Show that this is 77 regex patterns in `app/guardrails.py` and not a polite request to the
+it. Show that this is 82 regex patterns in `app/guardrails.py` and not a polite request to the
 model — and that the same scanner runs on the model's output, which is how image-only queries
 are covered.
 

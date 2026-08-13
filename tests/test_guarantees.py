@@ -14,6 +14,7 @@ Run:  python3 -m unittest discover -s tests -v
 from __future__ import annotations
 
 import inspect
+import re
 import sqlite3
 import sys
 import tempfile
@@ -1106,6 +1107,63 @@ class OffsiteTrailTest(unittest.TestCase):
         import situation_report as sr
         src = inspect.getsource(sr.render)
         self.assertIn("git_unpushed_commits", src)
+
+
+class MobileViewportTest(unittest.TestCase):
+    """The first defect a real user reported, 2026-08-13.
+
+    The bottom navigation was invisible on her phone in Chrome and Firefox
+    both, so the chat tab could not be reached at all — the product's main
+    feature, unreachable on the only class of device it is built for, for
+    seven days. Nothing in the ledger, the invariants or the test suite could
+    have noticed: everything here checks what the agent believes, and the
+    smoke test asks for HTTP 200, which the page was returning perfectly while
+    a third of it sat under the address bar.
+
+    Stdlib-only, so it runs in the `runner guarantees` CI job with no
+    dependencies — the app job needs FastAPI and cannot run on the box.
+    """
+
+    @property
+    def html(self) -> str:
+        return (Path(__file__).resolve().parents[1]
+                / "app" / "static" / "index.html").read_text()
+
+    def test_the_page_is_sized_to_the_visible_viewport(self):
+        """`100vh` on mobile is the height the page would have if the address
+        bar were retracted, not the height it has. `dvh` is the one that
+        tracks reality."""
+        self.assertIn("100dvh", self.html)
+
+    def test_the_fallback_comes_before_the_rule_that_replaces_it(self):
+        """Two declarations of the same property: a browser that does not know
+        `dvh` drops the second and keeps the first. Reversed, every modern
+        browser would take the fallback and the fix would do nothing."""
+        body = self.html
+        self.assertLess(body.index("height: 100vh"), body.index("height: 100dvh"))
+
+    def test_no_utility_class_overrides_it(self):
+        """A class beats an element selector. While `h-screen` was on <body>,
+        any `body { height: ... }` rule lost silently — which is the worst
+        possible outcome: a fix in the file, absent from the page.
+
+        Matched against the body tag itself, not the file: the comment
+        explaining the fix names the class it removed, and an assertion that
+        trips over its own explanation is a test nobody can keep."""
+        m = re.search(r"<body[^>]*>", self.html)
+        self.assertIsNotNone(m, "no <body> tag")
+        self.assertNotIn("h-screen", m.group(0))
+
+    def test_the_safe_area_inset_can_resolve(self):
+        """env(safe-area-inset-*) is zero unless the viewport meta opts in, so
+        the padding below the tab labels would quietly do nothing."""
+        self.assertIn("viewport-fit=cover", self.html)
+        self.assertIn("safe-area-inset-bottom", self.html)
+
+    def test_the_navigation_still_carries_all_three_tabs(self):
+        """Whatever else moves, the chat tab is the product."""
+        for tab in ("nav-guide", "nav-chat", "nav-authorities"):
+            self.assertIn(tab, self.html)
 
 
 if __name__ == "__main__":

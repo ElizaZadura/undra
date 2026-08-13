@@ -158,6 +158,7 @@ applied to metered token counts. That figure covers every call the agent made, o
 projects. Only one of those projects is billable: `undra-504613` carries the paid key, and
 `undra-free` carries a free-tier key whose calls cost nothing.
 
+<!-- audit:disclosed -->
 Split by the key that served each call, **as of 2026-08-12T09:16Z**:
 
 | Key | Calls | Estimated |
@@ -177,6 +178,7 @@ above, which keeps moving as the agent runs; only the billed figure is fixed.
 work would have cost had none of it run on the free tier, and it is the number our spend
 ceiling is enforced against, deliberately, because a budget guard should err toward stopping
 early.
+<!-- /audit:disclosed -->
 
 ### 2.2 Revenue by Month (May – August 2026)
 

@@ -1232,6 +1232,41 @@ class ImageMemoryTest(unittest.TestCase):
                         block.index("except Exception as e:"))
 
 
+class ResponseScanTest(unittest.TestCase):
+    """The answer is not scanned with the question's patterns.
+
+    Stdlib-only and source-level so it runs in the dependency-free CI job.
+    app/guardrails.py imports nothing but `re`, so the behaviour can be checked
+    here directly; app/main.py cannot, and the wiring is the half that broke.
+    """
+
+    def test_the_response_path_uses_the_response_check(self):
+        src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+        after = src.split("post-generation guardrails")[1]
+        self.assertIn("check_response_guardrails(raw_text)", after)
+        self.assertNotIn("check_query_guardrails(raw_text)", after)
+
+    def test_an_explanation_survives_the_response_check(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from app.guardrails import check_response_guardrails, check_query_guardrails
+        explanation = ("1177 Vårdguiden provides medical guidance for "
+                       "non-emergency healthcare queries in Sweden.")
+        # The question patterns refuse it. That is correct for a question and
+        # wrong for an answer, and running one over the other is the defect.
+        self.assertIsNotNone(check_query_guardrails(explanation))
+        self.assertIsNone(check_response_guardrails(explanation))
+
+    def test_a_determination_does_not(self):
+        sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
+        from app.guardrails import check_response_guardrails
+        for text in ("Your symptoms suggest an infection, so you should see a doctor.",
+                     "Your residence permit remains valid while it is processed.",
+                     "You are entitled to your deposit back.",
+                     "You must pay income tax on that stipend."):
+            with self.subTest(text=text[:40]):
+                self.assertIsNotNone(check_response_guardrails(text))
+
+
 class ChatRenderingTest(unittest.TestCase):
     """Model output reaches the page as HTML, so what it may contain is a
     security property, not a formatting preference.

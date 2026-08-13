@@ -621,7 +621,14 @@
                 const line = raw.trim();
                 if (!line) continue;          // deliberately not a list terminator
                 let m;
-                if ((m = line.match(/^#{1,6}\s+(.*)$/))) {
+                if (/^(-{3,}|\*{3,}|_{3,})$/.test(line)) {
+                    // A section break. The model uses one between the steps and
+                    // the tips, and it reached the screen as three hyphens in
+                    // the third take of the tvättstuga scene. Tested before the
+                    // bullet rule below, which would otherwise claim "---".
+                    closeTo(0);
+                    html += '<hr class="my-3 border-gray-300">';
+                } else if ((m = line.match(/^#{1,6}\s+(.*)$/))) {
                     closeTo(0);
                     html += `<p class="font-bold text-lund-navy mt-3 mb-1">${inline(m[1])}</p>`;
                 } else if ((m = line.match(/^[-*•]\s+(.*)$/))) {

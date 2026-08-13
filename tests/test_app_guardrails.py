@@ -3,7 +3,7 @@ from unittest.mock import patch, MagicMock
 from fastapi.testclient import TestClient
 
 from app.main import app
-from app.guardrails import check_query_guardrails
+from app.guardrails import check_query_guardrails, check_response_guardrails
 
 
 class TestAppGuardrails(unittest.TestCase):
@@ -416,3 +416,69 @@ class HealthcareNavigationTest(unittest.TestCase):
         questions this product exists to answer start returning 1177."""
         self.assertIsNone(check_query_guardrails("I'm broke, is there student support?"))
         self.assertIsNone(check_query_guardrails("how do I break down cardboard?"))
+
+
+class ResponseDeterminationTest(unittest.TestCase):
+    """What the model may SAY is not the same list as what a user may ASK.
+
+    Until 2026-08-13 `app/main.py` scanned model output with the *query*
+    patterns. While those were topic nouns that was defensible; once the
+    12 August narrowing made them determination-shaped it became wrong in the
+    worst direction — quietly. "what is 1177?" passed the pre-generation check,
+    reached the model, was answered correctly, and the answer was refused for
+    containing the words "medical guidance". Five seconds and one paid call,
+    every time, to produce a refusal the user had already been promised would
+    not happen.
+
+    Measured against the deployed service on 13 August: a residence permit
+    question refused in 0.21s (no model call), "what is 1177?" refused in
+    5.4s (model called, answer discarded).
+    """
+
+    # An answer is allowed to name a subject. That is what an explanation is.
+    EXPLAINING = [
+        "1177 Vårdguiden is the national healthcare guide. You can call 1177 "
+        "to speak to a nurse, or visit 1177.se to book an appointment.",
+        "To register with a vårdcentral, go to 1177.se and log in with BankID.",
+        "Migrationsverket is the Swedish Migration Agency. It decides "
+        "residence permit applications.",
+        "Skatteverket handles civil registration. The personnummer is issued "
+        "once your registration is approved.",
+        "Deposits are regulated in Sweden. Hyresgästföreningen advises tenants.",
+        "Healthcare is subsidised; a vårdcentral visit costs around 200 SEK.",
+        "The pant system gives you 1-2 SEK back per bottle.",
+        "Booking a laundry slot requires moving your lock to the date you want.",
+    ]
+
+    # What it may not do is decide something about this reader.
+    DETERMINING = [
+        "Your symptoms suggest an infection, so you should see a doctor.",
+        "It sounds like a fracture. You should go to akuten immediately.",
+        "That is not serious, no need to see a doctor.",
+        "You should take 400 mg ibuprofen every six hours.",
+        "This picture shows severe symptoms that require calling 1177.",
+        "Your residence permit remains valid while the extension is processed.",
+        "You would be eligible for a work permit under these rules.",
+        "You are entitled to your deposit back, and your landlord cannot keep it.",
+        "You must pay income tax on that stipend.",
+    ]
+
+    def test_an_explanation_is_not_a_determination(self):
+        for text in self.EXPLAINING:
+            with self.subTest(text=text[:48]):
+                self.assertIsNone(check_response_guardrails(text))
+
+    def test_a_determination_about_the_reader_is_refused(self):
+        for text in self.DETERMINING:
+            with self.subTest(text=text[:48]):
+                res = check_response_guardrails(text)
+                self.assertIsNotNone(res)
+                self.assertTrue(res["refused"])
+
+    def test_the_answer_is_not_scanned_with_the_question_patterns(self):
+        """The regression itself: the query check refuses this, the response
+        check does not, and the response path must use the response check."""
+        explanation = ("1177 Vårdguiden provides medical guidance for "
+                       "non-emergency healthcare queries in Sweden.")
+        self.assertIsNotNone(check_query_guardrails(explanation))
+        self.assertIsNone(check_response_guardrails(explanation))

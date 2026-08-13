@@ -251,6 +251,126 @@ REFUSAL_CATEGORIES = {
 }
 
 
+# --------------------------------------------------------------------------- #
+# What the model is not allowed to SAY, which is not the same list as what a
+# user is not allowed to ASK.
+#
+# Added 2026-08-13. Until today `app/main.py` scanned the model's answer with
+# the patterns above — the query patterns. That was defensible while those
+# patterns were topic nouns, and became wrong the moment they stopped being: a
+# correct answer to "what is 1177?" says "1177 Vårdguiden provides medical
+# guidance", and "medical guidance" was enough to bin it. The pre-generation
+# fix of 12 August therefore did nothing for the questions it was written for.
+# They reached the model, were answered, and the answer was discarded after
+# being paid for — five seconds and one call, every time.
+#
+# The distinction is the same one CHARTER §3.3 draws, applied on the way out
+# instead of the way in. A refusal here is about the model making a
+# DETERMINATION about this user — their diagnosis, their eligibility, their
+# liability — and not about the model naming a subject.
+#
+#   refused:  "you should see a doctor about that"
+#             "your residence permit remains valid"
+#             "you are entitled to your deposit back"
+#   allowed:  "1177 Vårdguiden is where you book non-emergency care"
+#             "Migrationsverket decides residence permits"
+#             "deposits are regulated; Hyresgästföreningen advises tenants"
+#
+# Second person throughout, deliberately. A statement about the world is the
+# product's purpose; a statement about the reader is the thing it must not make.
+RESPONSE_DETERMINATION_PATTERNS: Dict[str, List[str]] = {
+    "medical_safety": [
+        # Diagnosis aimed at the reader.
+        r"\byou (probably |likely |may |might |could )?have\b.{0,30}"
+        r"\b(infection|fracture|virus|flu|covid|condition|illness|disease)\b",
+        r"\byour symptoms\b",
+        r"\b(it|this) (sounds|looks|seems) like\b.{0,24}"
+        r"\b(infection|fracture|broken|virus|flu|covid|allergic|serious)\b",
+        r"\byou are (likely |probably )?(suffering|experiencing)\b",
+        # Treatment and dosage.
+        r"\byou should (take|apply|use)\b.{0,24}"
+        r"\b(mg|ml|tablet|painkiller|antibiotic|ibuprofen|paracetamol|alvedon)\b",
+        r"\btake\s+\d+\s*(mg|ml|tablets?|pills?)\b",
+        r"\bi (recommend|suggest|advise) (that )?you (take|apply|use)\b",
+        # Urgency, in both directions. "You do not need a doctor" is a
+        # determination too, and the more dangerous of the two.
+        r"\byou (should|need to|must|ought to) (see|visit|go to|call)\b.{0,24}"
+        r"\b(doctor|hospital|akuten|112|emergency|vårdcentral)\b",
+        r"\byou (do not|don't) (need to|have to) (see|visit|go to|call)\b.{0,24}"
+        r"\b(doctor|hospital|akuten|112|emergency)\b",
+        r"\b(this|that|it) is (not |probably not )?(serious|an emergency|dangerous|urgent)\b",
+        r"\bno need to (worry|see a doctor|go to)\b",
+        # Determinations made about an image rather than to the reader. The
+        # multimodal path is the one place an assessment can arrive without the
+        # user having typed anything a query pattern could read: "this picture
+        # shows severe symptoms that require calling 1177" names no reader and
+        # is still a clinical judgement.
+        r"\bsymptoms\b.{0,40}\b(require|requires|need|needs|suggest|suggests|"
+        r"indicate|indicates|consistent with)\b",
+        r"\b(require|requires|needs?|needing)\s+(immediate|urgent|emergency)\b",
+        r"\b(require|requires|needs?)\s+(calling|contacting)\s+"
+        r"(1177|112|a doctor|emergency)\b",
+    ],
+    "immigration": [
+        r"\byour (residence |work |student )?permit\b.{0,30}"
+        r"\b(is|remains|stays|will be|would be|is not)\b.{0,20}"
+        r"\b(valid|invalid|approved|rejected|granted|revoked)\b",
+        r"\byou (are|would be|will be) (eligible|ineligible|entitled)\b.{0,30}"
+        r"\b(permit|visa|citizenship|residence|asylum)\b",
+        r"\byou (qualify|do not qualify|don't qualify) for\b.{0,30}"
+        r"\b(permit|visa|citizenship|residence|asylum)\b",
+        r"\byour application (will|would|should) be (approved|rejected|granted)\b",
+        r"\byou (can|cannot|can't|may|may not) (stay|remain|work|enter)\b.{0,24}"
+        r"\b(sweden|schengen|eu)\b",
+    ],
+    "tax": [
+        r"\byou (are|will be|would be) (liable|taxed|required to pay)\b",
+        r"\byou (must|need to|should) (pay|declare|report)\b.{0,24}"
+        r"\b(tax|skatt|income tax)\b",
+        r"\byou (do not|don't) (have to|need to) pay\b.{0,20}\b(tax|skatt)\b",
+        r"\byou (are|are not|aren't) (considered )?(a )?(tax )?resident\b",
+        r"\byour (tax|skatt)\b.{0,20}\b(rate|liability|bracket) (is|will be)\b",
+    ],
+    "legal": [
+        r"\byou (are|would be) entitled to\b",
+        r"\byou have (a |the )?(legal )?right to\b",
+        r"\byour landlord (must|has to|cannot|can't|is required|is not allowed)\b",
+        r"\byou (can|could|should) (sue|take .{0,20}to court|file a claim)\b",
+        r"\b(that|this) (is|would be) (illegal|unlawful|a breach|not legal)\b",
+        r"\byou (are not|aren't) (obliged|required|liable)\b",
+        r"\byou (can|cannot|can't) (withhold|stop paying|refuse to pay)\b",
+    ],
+}
+
+
+def check_response_guardrails(text: str) -> Optional[Dict[str, Any]]:
+    """Scan a model-generated answer for a determination about the reader.
+
+    Separate from `check_query_guardrails` on purpose. Running the query
+    patterns over an answer refuses the product's own explanations — see the
+    note above this function.
+    """
+    if not text:
+        return None
+
+    text_lower = text.lower()
+
+    for category_id, patterns in RESPONSE_DETERMINATION_PATTERNS.items():
+        for pattern in patterns:
+            if re.search(pattern, text_lower):
+                config = REFUSAL_CATEGORIES[category_id]
+                return {
+                    "refused": True,
+                    "category": category_id,
+                    "title": config["title"],
+                    "authority": config["authority"],
+                    "message": config["message"],
+                    "routing": config["routing"]
+                }
+
+    return None
+
+
 def check_query_guardrails(text: str) -> Optional[Dict[str, Any]]:
     """
     Checks if a user's query triggers any refusal guardrail category.

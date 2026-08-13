@@ -8,7 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from PIL import Image
 
-from app.guardrails import check_query_guardrails
+from app.guardrails import check_query_guardrails, check_response_guardrails
 
 # Set up logging
 logging.basicConfig(level=logging.INFO)
@@ -270,8 +270,16 @@ async def chat(
 
         raw_text = response.text or ""
 
-        # Run post-generation guardrails on the response text from Gemini
-        post_guardrail_result = check_query_guardrails(raw_text)
+        # Run post-generation guardrails on the response text from Gemini.
+        #
+        # check_response_guardrails, not check_query_guardrails. The query
+        # patterns match a subject being raised; an answer is allowed to raise
+        # subjects — that is what an explanation is. What it may not do is
+        # decide something about this reader. Scanning answers with the query
+        # patterns refused "1177 Vårdguiden provides medical guidance" for
+        # containing the words "medical guidance", which silently undid the
+        # 12 August narrowing for exactly the questions it was written for.
+        post_guardrail_result = check_response_guardrails(raw_text)
         if post_guardrail_result:
             logger.info(f"Post-generation guardrail triggered for category: {post_guardrail_result['category']}")
             return post_guardrail_result

@@ -1,0 +1,124 @@
+#!/usr/bin/env bash
+#
+# Build and deploy the product, then check that the thing now serving is the
+# thing you meant to serve.
+#
+# Written on 2026-08-13, after a deploy of a mobile viewport fix shipped a tree
+# from 7 August. Everything reported success — the build passed, the deploy
+# passed, Cloud Run returned 200, and the watchdog's deploy_health stayed green
+# — because none of them look at *what* is running. `gcloud builds submit`
+# uploads the directory you are standing in, not a branch, and Cloud Shell keeps
+# its home between sessions, so a clone taken once stays where it was while main
+# moves on.
+#
+# Run it from Cloud Shell, inside the repository:
+#
+#   ./bin/deploy
+#
+# The verification is a hash comparison, not a marker string. `/` serves
+# app/static/index.html byte for byte through FileResponse, so the sha256 of the
+# local file and of the served body are equal exactly when the deploy worked.
+# Nothing has to be updated when the page changes, which is the point: a check
+# you have to remember to maintain is a check that will be wrong when it matters.
+#
+# Exit codes: 0 deployed and verified, 1 refused to start, 2 built but the
+# served bytes never matched.
+
+set -euo pipefail
+
+cd "$(dirname "$0")/.."
+
+HOST="${UNDRA_HOST:-$(sed -n 's/^ *"\([a-z0-9.-]*\)",.*custom domain.*/\1/p' invariants.toml | head -1)}"
+HOST="${HOST:-undra.nu}"
+PAGE="app/static/index.html"
+TRIES=12          # 12 x 10s = two minutes. A Cloud Run rollout is usually
+INTERVAL=10       # seconds; this is the ceiling, not the expectation.
+
+say()  { printf '\n\033[1m%s\033[0m\n' "$*"; }
+fail() { printf '\n\033[31m%s\033[0m\n' "$*" >&2; }
+
+# --- 1. Refuse to deploy something you cannot point at ---------------------- #
+
+if [ -n "$(git status --porcelain)" ]; then
+    fail "The working tree has uncommitted changes."
+    git status --short
+    cat <<'EOF'
+
+Deploying this would put something in production that exists on no branch and
+in no commit, so nothing afterwards could say what is running. Commit it, or
+stash it, then run this again.
+EOF
+    exit 1
+fi
+
+say "Checking the remote…"
+git fetch --quiet origin main
+
+LOCAL="$(git rev-parse HEAD)"
+REMOTE="$(git rev-parse origin/main)"
+BASE="$(git merge-base HEAD origin/main)"
+
+if [ "$LOCAL" = "$REMOTE" ]; then
+    :
+elif [ "$LOCAL" = "$BASE" ]; then
+    say "Behind origin/main. Fast-forwarding — this is the failure of 13 August."
+    git merge --ff-only origin/main
+elif [ "$REMOTE" = "$BASE" ]; then
+    fail "This clone is ahead of origin/main by $(git rev-list --count origin/main..HEAD) commit(s)."
+    cat <<'EOF'
+
+You would be deploying code that is not on the branch. Push it first, so that
+what is running and what is reviewable are the same thing.
+EOF
+    exit 1
+else
+    fail "This clone and origin/main have diverged. Sort that out by hand."
+    exit 1
+fi
+
+say "Deploying $(git rev-parse --short HEAD) — $(git log -1 --format=%s)"
+
+# --- 2. What we expect to be serving afterwards ----------------------------- #
+
+WANT="$(sha256sum "$PAGE" | cut -d' ' -f1)"
+printf '  %s  %s\n' "${WANT:0:16}" "$PAGE"
+
+# --- 3. Build and deploy ---------------------------------------------------- #
+
+say "Building…"
+gcloud builds submit --config cloudbuild.yaml
+
+# --- 4. Check the served bytes, which is the only claim that counts ---------- #
+
+say "Waiting for https://$HOST/ to serve it…"
+
+for i in $(seq 1 "$TRIES"); do
+    GOT="$(curl -fsS --max-time 30 "https://$HOST/" 2>/dev/null | sha256sum | cut -d' ' -f1 || true)"
+    if [ "$GOT" = "$WANT" ]; then
+        HEALTH="$(curl -fsS --max-time 15 "https://$HOST/api/health" || echo '(no response)')"
+        printf '\n\033[32m%s\033[0m\n' "Deployed and verified. https://$HOST/ is serving $(git rev-parse --short HEAD)."
+        printf '  page   %s\n  health %s\n' "${GOT:0:16}" "$HEALTH"
+        exit 0
+    fi
+    printf '  attempt %2d/%d — serving %s, want %s\n' \
+        "$i" "$TRIES" "${GOT:0:16}" "${WANT:0:16}"
+    sleep "$INTERVAL"
+done
+
+fail "The build finished but https://$HOST/ never served it."
+cat <<EOF
+
+The last response hashed ${GOT:0:16}; the local page hashes ${WANT:0:16}.
+
+This is the state the script exists to make visible rather than silent. Likely
+causes, cheapest first:
+
+  * the rollout is slower than ${TRIES}0 seconds — re-run the check alone:
+      curl -s https://$HOST/ | sha256sum
+  * traffic is pinned to an older revision:
+      gcloud run services describe undra --region europe-north1 \\
+        --format='value(status.traffic)'
+  * the build succeeded but the deploy step did not — read the tail of the
+    build log above rather than trusting its final line.
+EOF
+exit 2

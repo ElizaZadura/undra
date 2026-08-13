@@ -129,7 +129,21 @@ git clone https://github.com/ElizaZadura/undra.git && cd undra
 gcloud builds submit --config cloudbuild.yaml
 ```
 
-**Every time after that — `git pull` first. This is not optional.**
+**Every time after that, use `./bin/deploy`.**
+
+```bash
+cd undra
+./bin/deploy
+```
+
+It refuses to start if the working tree is dirty or the clone is ahead of
+`origin/main`, fast-forwards if it is behind, prints the commit it is about to
+ship, builds, and then compares the sha256 of the served page against the local
+one until they match or two minutes pass. A hash rather than a marker string, so
+there is nothing to keep updated: `/` serves `app/static/index.html` byte for
+byte, so the two hashes are equal exactly when the deploy worked.
+
+By hand, if you need to:
 
 ```bash
 cd undra

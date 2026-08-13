@@ -122,10 +122,41 @@ assuming the grants did not apply.
 
 ## 4. Build and deploy
 
+**First time:**
+
 ```bash
 git clone https://github.com/ElizaZadura/undra.git && cd undra
 gcloud builds submit --config cloudbuild.yaml
 ```
+
+**Every time after that — `git pull` first. This is not optional.**
+
+```bash
+cd undra
+git pull
+git log --oneline -1                        # is this the commit you mean to ship?
+gcloud builds submit --config cloudbuild.yaml
+```
+
+`gcloud builds submit` uploads **the directory you are standing in**. It does not
+read GitHub, and nothing warns you when the two differ. Cloud Shell keeps its
+home directory between sessions, so a clone taken once stays at that commit
+indefinitely while `main` moves on.
+
+On 13 August this deployed a six-day-old tree over a fix that had just been
+pushed. The build succeeded, the deploy succeeded, Cloud Run served HTTP 200,
+`deploy_health` stayed green, and the bug the deploy existed to fix was still
+there — because none of those things look at *what* is running.
+
+**Check what is live, not what the build said:**
+
+```bash
+curl -sI https://undra.nu/ | grep -i last-modified   # mtime of index.html in the image
+curl -s  https://undra.nu/ | grep -c 100dvh          # something the new page has and the old one does not
+```
+
+Pick the marker to match whatever you just changed. A build log is a claim about
+the past; the served bytes are the fact.
 
 `cloudbuild.yaml` exists because this repository has **two** Dockerfiles. The one
 at the root builds the operator container that runs on the lab box;

@@ -252,6 +252,48 @@ REFUSAL_CATEGORIES = {
 
 
 # --------------------------------------------------------------------------- #
+# WHAT THIS CHECK IS, AND WHAT IT IS NOT
+#
+# The two guardrails in this file are not equally strong, and the difference is
+# worth stating plainly rather than discovering.
+#
+# `check_query_guardrails` is genuinely deterministic and genuinely cheap. It
+# runs before any model call, so a refused question costs nothing and cannot be
+# argued out of by rephrasing, retrying, or instructing the model. Everything
+# good that is claimed about deterministic guardrails is true of it.
+#
+# `check_response_guardrails` is a different kind of thing wearing the same
+# clothes. The question it is asked — "is this sentence a determination about
+# the reader?" — often has no answer in the sentence:
+#
+#     "You should call 112 in an emergency."
+#
+# General information in an answer about how Swedish healthcare works. A
+# determination if it is the reply to someone describing chest pain. Identical
+# text. The context that separates them is the user's question, which this
+# function never sees, and even with it the judgement is semantic rather than
+# lexical. On 2026-08-13 a rule matching that sentence refused the product's
+# own safety boilerplate — the boilerplate SYSTEM_INSTRUCTION instructs the
+# model to write — and did it non-deterministically, depending on which
+# phrasing the model chose that time.
+#
+# So the design here is deliberately lopsided:
+#
+#   - the strong, cheap, deterministic check is on the way IN, where it works;
+#   - generation is constrained by SYSTEM_INSTRUCTION, which does have the
+#     context, and which now states the same rule this file does;
+#   - the check on the way OUT keeps only the forms that are a determination in
+#     every context — a dosage, a diagnosis of the reader, an assertion about
+#     the reader's eligibility or liability — plus the image rules below, where
+#     nothing else has read the input at all.
+#
+# The right instrument for the semantic question is a classifier that sees the
+# question and the answer together: a second, cheap model call returning a
+# yes/no on "does this decide something about this person". That is a real cost
+# in latency and money and has not been built. It is the known limitation of
+# this module, recorded here rather than implied by a list of patterns that
+# looks more capable than it is.
+# --------------------------------------------------------------------------- #
 # What the model is not allowed to SAY, which is not the same list as what a
 # user is not allowed to ASK.
 #
@@ -292,14 +334,38 @@ RESPONSE_DETERMINATION_PATTERNS: Dict[str, List[str]] = {
         r"\b(mg|ml|tablet|painkiller|antibiotic|ibuprofen|paracetamol|alvedon)\b",
         r"\btake\s+\d+\s*(mg|ml|tablets?|pills?)\b",
         r"\bi (recommend|suggest|advise) (that )?you (take|apply|use)\b",
-        # Urgency, in both directions. "You do not need a doctor" is a
-        # determination too, and the more dangerous of the two.
-        r"\byou (should|need to|must|ought to) (see|visit|go to|call)\b.{0,24}"
-        r"\b(doctor|hospital|akuten|112|emergency|vårdcentral)\b",
+        # Urgency, and only in the direction that cannot be general advice.
+        #
+        # There used to be a rule here matching "you should see/call a
+        # doctor/112". It was removed on 2026-08-13 because it refused the
+        # product's own safety boilerplate — "You should call 112 in an
+        # emergency", "Call 1177 if you are unsure whether you need to see a
+        # doctor" — which SYSTEM_INSTRUCTION explicitly tells the model to say.
+        # The service told the model what to write and then refused the answer
+        # for writing it, non-deterministically, depending on which phrasing
+        # the model happened to choose.
+        #
+        # It cannot be repaired by making the pattern cleverer. "You should
+        # call 112" is general information in one context and a determination
+        # in another, and the difference is not in the sentence — it is in
+        # whether the sentence is answering this person's situation. A regex
+        # reading the answer alone does not have that information. See the
+        # note at the top of the module on what this check can and cannot be.
+        #
+        # What stays are the forms that are a determination in every context:
+        # telling someone they do NOT need care, and telling them their own
+        # situation is or is not serious. No general explanation says those.
         r"\byou (do not|don't) (need to|have to) (see|visit|go to|call)\b.{0,24}"
         r"\b(doctor|hospital|akuten|112|emergency)\b",
-        r"\b(this|that|it) is (not |probably not )?(serious|an emergency|dangerous|urgent)\b",
+        r"\b(this|that|it|yours?) is (not|probably not|nothing) "
+        r"(serious|to worry about|dangerous|an emergency)\b",
         r"\bno need to (worry|see a doctor|go to)\b",
+        # "you will be fine" was written here and deleted in the same sitting.
+        # It fails the rule this section was just rewritten around: identical
+        # text, different meaning by context. "Don't worry about the Swedish,
+        # you'll be fine at the tvättstuga" is a friendly sentence from a
+        # friendly assistant, and adding the contraction to catch the medical
+        # reading would have caught that one too.
         # Determinations made about an image rather than to the reader. The
         # multimodal path is the one place an assessment can arrive without the
         # user having typed anything a query pattern could read: "this picture
@@ -307,9 +373,10 @@ RESPONSE_DETERMINATION_PATTERNS: Dict[str, List[str]] = {
         # is still a clinical judgement.
         r"\bsymptoms\b.{0,40}\b(require|requires|need|needs|suggest|suggests|"
         r"indicate|indicates|consistent with)\b",
-        r"\b(require|requires|needs?|needing)\s+(immediate|urgent|emergency)\b",
-        r"\b(require|requires|needs?)\s+(calling|contacting)\s+"
-        r"(1177|112|a doctor|emergency)\b",
+        # `requires immediate/urgent attention` on its own was here and is
+        # gone with the rest: "a serious emergency requires immediate medical
+        # attention — call 112" is the boilerplate, not a judgement. The
+        # symptoms rule above still catches the image case it was added for.
     ],
     "immigration": [
         r"\byour (residence |work |student )?permit\b.{0,30}"

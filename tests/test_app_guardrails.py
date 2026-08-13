@@ -556,3 +556,57 @@ class ImagePathScanTest(unittest.TestCase):
                     check_response_guardrails(self.DOCUMENTS[0][1], has_image=True))
                 self.assertIsNone(
                     check_response_guardrails(self.DOCUMENTS[0][1], has_image=False))
+
+
+class SafetyBoilerplateTest(unittest.TestCase):
+    """The service must not refuse the answer it told the model to write.
+
+    SYSTEM_INSTRUCTION instructs the model to route people to 112 and 1177.
+    A response rule matching "you should see/call a doctor/112" therefore
+    refused the product's own safety boilerplate — and did it at random,
+    depending on which phrasing the model happened to choose that time.
+    Measured against production on 13 August: "what's 1177?" refused in 4.6s,
+    "what is 1177" answered in 4.0s, same deployment, same second.
+
+    It is not fixable with a better pattern. "You should call 112 in an
+    emergency" is general information in one context and a determination in
+    another; the difference is not in the sentence. The rule was deleted, and
+    what remains is the set that is a determination in every context.
+    """
+
+    BOILERPLATE = [
+        "You should call 112 in an emergency.",
+        "Call 1177 if you are unsure whether you need to see a doctor.",
+        "In case of a life-threatening emergency, call 112 immediately.",
+        "A serious emergency requires immediate medical attention — call 112.",
+        "To book an appointment, contact your vårdcentral through 1177.se.",
+        "1177 Vårdguiden is Sweden's national healthcare guide.",
+        # Deleted in the same sitting it was written, for being this class of
+        # error: "you will be fine" is a friendly sentence from a friendly
+        # assistant, and the medical reading is not in the text.
+        "Don't worry about the Swedish, you'll be fine at the tvättstuga.",
+    ]
+
+    ALWAYS_A_DETERMINATION = [
+        "You don't need to see a doctor for that.",
+        "That is probably not serious.",
+        "No need to worry, it will pass.",
+        "You should take 400 mg ibuprofen every six hours.",
+        "Your symptoms suggest an infection.",
+    ]
+
+    def test_routing_advice_is_not_a_determination(self):
+        for text in self.BOILERPLATE:
+            with self.subTest(text=text[:44]):
+                self.assertIsNone(check_response_guardrails(text))
+
+    def test_what_is_left_is_a_determination_in_any_context(self):
+        for text in self.ALWAYS_A_DETERMINATION:
+            with self.subTest(text=text[:44]):
+                self.assertIsNotNone(check_response_guardrails(text))
+
+    def test_the_limitation_is_written_down_where_it_is_relied_on(self):
+        """The two checks in that file are not equally strong and the module
+        says so. A pattern list reads as more capable than it is."""
+        import app.guardrails as g
+        self.assertIn("classifier", g.__doc__ or open(g.__file__).read())

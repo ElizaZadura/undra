@@ -1317,17 +1317,21 @@ class ChatRenderingTest(unittest.TestCase):
         self.assertNotIn("'<br>' + escapeHTML(text)", js)
         self.assertIn("let renderText = text;", js)
 
-    def test_the_renderer_cannot_emit_a_tag_the_whitelist_does_not_name(self):
-        """Every replacement writes a fixed tag with a fixed class. If one ever
-        interpolates a capture group into a tag name, an attribute or a URL,
-        the escaping upstream stops being sufficient."""
+    def test_the_renderer_interpolates_into_exactly_one_attribute(self):
+        """Every replacement writes a fixed tag with a fixed class, with one
+        exception: the anchor's href, added 13 August so authority URLs in
+        prose are clickable.
+
+        That exception is the whole risk surface, so it is confined to one
+        helper and fed only by a pattern anchored to `https?:`. Nothing else
+        may interpolate into an attribute, and nothing may write a src at all —
+        an <img src> from model output is a request to an arbitrary host."""
         js = self.js
         start = js.index("function renderRich")
         body = js[start:js.index("function appendMessage", start)]
-        self.assertNotIn("href=", body)
+        self.assertEqual(body.count('href="'), 1, "href built in more than one place")
+        self.assertIn('`<a href="${href}"', body)
         self.assertNotIn("src=", body)
-        for opener in ("<strong>", "<em>", "<li>", "<ul ", "<ol ", "<p ", "<code "):
-            pass  # documented by the assertions above; kept as the tag inventory
         self.assertNotIn("$1>", body)
 
     def test_bold_can_contain_the_italics_the_model_nests_in_it(self):
@@ -1357,6 +1361,34 @@ class ChatRenderingTest(unittest.TestCase):
         body = js[start:js.index("function appendMessage", start)]
         self.assertIn("stack", body)
         self.assertIn("closeTo(1)", body)   # leave the ol open, close the ul
+
+    def test_urls_in_prose_become_links(self):
+        """The model writes authority URLs into its answers and they were
+        plain text — which is worse than not offering them, in a product whose
+        function is routing people to authorities. The buttons on a refusal
+        card come from structured data and were never affected."""
+        js = self.js
+        self.assertIn('rel="noopener noreferrer"', js)
+        self.assertIn('target="_blank"', js)
+
+    def test_links_are_built_in_a_single_pass(self):
+        """Two passes nest: the bare-URL rule runs over the anchor the markdown
+        rule just produced and linkifies the href inside its own attribute.
+        Caught in testing, which is why this is one alternation."""
+        js = self.js
+        start = js.index("const inline")
+        body = js[start:js.index("let html", start)]
+        self.assertEqual(body.count("https?:\\/\\/"), 2)   # both in one regex
+        self.assertIn("|https?:\\/\\/", body)              # the alternation
+
+    def test_only_http_schemes_are_linkified(self):
+        """javascript: and data: cannot match the scheme, so a model talked
+        into emitting one produces text rather than a live handler."""
+        js = self.js
+        start = js.index("const inline")
+        body = js[start:js.index("let html", start)]
+        self.assertNotIn("javascript:", body)
+        self.assertIn("https?:", body)
 
     def test_pre_wrap_is_gone_from_the_assistant_bubble(self):
         """renderRich emits block elements; pre-wrap on top of them doubles

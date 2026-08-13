@@ -590,7 +590,43 @@
             //
             // The italic rule requires a non-space after the opening star so
             // that arithmetic ("2 * 3 * 4") is not turned into emphasis.
+            // Links, last of all.
+            //
+            // The model writes authority URLs into its answers — "1177
+            // Vårdguiden: https://www.1177.se" — and they were plain text.
+            // They looked like links and did nothing, which is worse than not
+            // offering them: the whole product is routing people to
+            // authorities. The buttons on a refusal card are built from
+            // structured routing data and were never affected; this is for
+            // URLs inside prose.
+            //
+            // Only http and https, matched on the already-escaped string, and
+            // run after the emphasis rules so no capture group can end up
+            // inside an attribute. `javascript:` and `data:` cannot match the
+            // scheme, and quotes are entities by this point, so a URL cannot
+            // close the href and start an attribute of its own.
+            const link = (href, label) =>
+                `<a href="${href}" target="_blank" rel="noopener noreferrer" ` +
+                `class="text-lund-navy underline break-words">${label}</a>`;
+
             const inline = s => s
+                // Both link forms in ONE pass, alternation, markdown first.
+                // Two passes do not work: the bare-URL rule runs over the
+                // anchor the markdown rule just produced and linkifies the
+                // href inside its own attribute, giving a nested <a>. Caught
+                // in testing, which is the only reason this is one regex.
+                //
+                // Trailing punctuation belongs to the sentence, not to the
+                // address: "see https://1177.se." must not link the full stop.
+                .replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)|https?:\/\/[^\s<>"']+/g,
+                    (m, label, href) => {
+                        if (href) return link(href, label);
+                        const clean = m.replace(/[.,;:!?)\]]+$/, '');
+                        return link(clean, clean) + m.slice(clean.length);
+                    })
+                // Emphasis afterwards. Neither rule can match inside the
+                // anchors above: a URL contains no ** and the class attribute
+                // contains no asterisks or backticks.
                 .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
                 .replace(/\*([^\s*][^*\n]*)\*/g, '<em>$1</em>')
                 .replace(/`([^`\n]+)`/g, '<code class="bg-gray-200 rounded px-1 text-[0.9em]">$1</code>');

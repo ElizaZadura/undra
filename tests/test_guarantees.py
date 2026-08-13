@@ -1166,5 +1166,71 @@ class MobileViewportTest(unittest.TestCase):
             self.assertIn(tab, self.html)
 
 
+class ImageMemoryTest(unittest.TestCase):
+    """The second defect a real user reported, 2026-08-13, and the one that
+    stopped the demo video being recorded.
+
+    `clean_img.putdata(list(img_rgb.getdata()))` stripped metadata by
+    materialising one Python tuple per pixel. For the 50MP photo the reporter's
+    phone takes, that is ~50 million 64-byte tuples — roughly 3GB — inside a
+    512MiB container. The instance was OOM-killed mid-request, so there was no
+    response at all, and the browser told her to check her connection.
+
+    Reproduced against production before the fix: 0.5MP and 12MP returned 200,
+    8160x6120 returned HTTP 503 with an empty body in 4.7 seconds.
+
+    Source-level, because the app suite needs FastAPI and Pillow and cannot run
+    on the operator box — the check that would have caught this has to live
+    where it runs.
+    """
+
+    @property
+    def source(self) -> str:
+        return (Path(__file__).resolve().parents[1]
+                / "app" / "main.py").read_text()
+
+    def test_pixels_are_not_copied_through_python_objects(self):
+        src = re.sub(r"#.*", "", self.source)     # comments describe the bug
+        self.assertNotIn("getdata()", src)
+        self.assertNotIn("putdata(", src)
+
+    def test_the_image_is_bounded_before_it_is_processed(self):
+        """Downscaling is not an optimisation here. It is what keeps peak
+        memory independent of what camera the user happens to own."""
+        src = self.source
+        self.assertIn("MAX_IMAGE_EDGE", src)
+        self.assertIn("thumbnail(", src)
+
+    def test_a_jpeg_is_decoded_at_reduced_scale(self):
+        """draft() has to be called before the pixels are loaded, or libjpeg
+        has already done the expensive thing."""
+        src = self.source
+        self.assertIn('draft(', src)
+        self.assertLess(src.index("draft("), src.index("thumbnail("))
+
+    def test_metadata_is_still_stripped_by_reconstruction(self):
+        """The cheap version of this fix is `.copy()`, which carries the
+        original's `info` dict — EXIF included — straight across."""
+        src = self.source
+        self.assertIn("Image.new(", src)
+        self.assertIn(".paste(", src)
+
+    def test_an_oversized_upload_is_answered_rather_than_died_on(self):
+        src = self.source
+        self.assertIn("MAX_IMAGE_BYTES", src)
+        self.assertIn("413", src)
+
+    def test_the_size_refusal_survives_the_blanket_handler(self):
+        """`except Exception` sits directly below and would rewrite the 413 as
+        'Invalid image file or format', sending the user to look for a fault
+        in a file that is fine."""
+        # Scoped to the image handler: main.py catches Exception elsewhere too,
+        # and a bare index() over the file finds whichever comes first.
+        block = self.source.split("3. Handle Image Upload")[1]
+        self.assertIn("except HTTPException:", block)
+        self.assertLess(block.index("except HTTPException:"),
+                        block.index("except Exception as e:"))
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

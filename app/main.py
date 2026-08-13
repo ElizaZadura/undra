@@ -33,6 +33,23 @@ app.add_middleware(
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
 os.makedirs(STATIC_DIR, exist_ok=True)
 
+#: Longest edge, in pixels, of the image actually sent to the model. Everything
+#: larger is downscaled first. Chosen because the model gains nothing beyond it
+#: for the images this product receives — signs, notices, machine panels, which
+#: are read from their text — while the phones sending them shoot 50MP.
+MAX_IMAGE_EDGE = 1568
+
+#: Refuse absurd uploads with an answer rather than by dying. Cloud Run caps a
+#: request at 32MB regardless; this is the point at which we stop before the
+#: decoder is handed something pathological.
+MAX_IMAGE_BYTES = 20 * 1024 * 1024
+
+#: Pillow's own decompression-bomb ceiling, set explicitly rather than left at
+#: whatever the installed version defaults to. Above this, opening raises and
+#: the handler returns 400. A container that is killed cannot return anything,
+#: which is how this failure mode reached the user as "check your connection".
+Image.MAX_IMAGE_PIXELS = 80_000_000
+
 # System instruction to enforce Lund context, refusal rules, and transparency
 SYSTEM_INSTRUCTION = """
 You are 'undra' - a helpful, friendly, and honest mobile-first AI assistant for pre-arrival international students in Lund, Sweden.
@@ -129,17 +146,48 @@ async def chat(
     if image:
         try:
             image_bytes = await image.read()
+            if len(image_bytes) > MAX_IMAGE_BYTES:
+                raise HTTPException(
+                    status_code=413,
+                    detail=("That image is larger than 20MB. Please send a "
+                            "smaller one, or a screenshot of it."))
             original_img = Image.open(io.BytesIO(image_bytes))
 
-            # Reconstruct the image to absolutely strip EXIF and other metadata from the byte structure
+            # Decode at reduced scale wherever the format allows it. draft() is
+            # a no-op for everything but JPEG; for JPEG it tells libjpeg to
+            # decode DCT-scaled, so a 50-megapixel photo is never a
+            # 50-megapixel buffer in the first place.
+            original_img.draft("RGB", (MAX_IMAGE_EDGE, MAX_IMAGE_EDGE))
+
             # Convert paletted or alpha modes to Standard RGB
             if original_img.mode not in ('RGB', 'RGBA'):
                 img_rgb = original_img.convert('RGB')
             else:
                 img_rgb = original_img
 
+            # Downscale before anything else touches the pixels. Gemini derives
+            # no benefit from more than this — a laundry booking panel is read
+            # from the text, not the sensor — and every megapixel past it costs
+            # memory here, latency for the user, and tokens on the call.
+            img_rgb.thumbnail((MAX_IMAGE_EDGE, MAX_IMAGE_EDGE), Image.LANCZOS)
+
+            # Reconstruct the image to absolutely strip EXIF and other metadata
+            # from the byte structure. A fresh Image has an empty `info` dict —
+            # `.copy()` would carry the original's across, which is the whole
+            # thing being prevented.
+            #
+            # paste(), not putdata(list(getdata())). getdata() yields one Python
+            # tuple per pixel and list() materialises all of them: for the
+            # 50MP photo a Razr 50 Ultra takes, that is roughly 50 million
+            # 64-byte tuples, about 3GB, in a 512MiB container. The instance was
+            # OOM-killed mid-request, the connection dropped, and the browser —
+            # which cannot tell a dead server from a dead network — told the
+            # user to check her connection. Reported from a real phone on
+            # 13 August after two failed attempts to record the demo video;
+            # reproduced against production at 8160x6120, HTTP 503 in 4.7s.
+            # paste() is the same guarantee at C speed and constant overhead.
             clean_img = Image.new(img_rgb.mode, img_rgb.size)
-            clean_img.putdata(list(img_rgb.getdata()))
+            clean_img.paste(img_rgb)
 
             # Save to an in-memory buffer to verify we can compress/serialize it
             out_buf = io.BytesIO()
@@ -155,6 +203,11 @@ async def chat(
             # what debugging actually needs.
             logger.info("Successfully processed image in-memory and stripped EXIF "
                         f"({out_buf.getbuffer().nbytes} bytes, {save_format}).")
+        except HTTPException:
+            # Re-raised as filed. Without this the blanket handler below turns
+            # the 413 above into "Invalid image file or format", which sends
+            # the user to look for a problem with a file that is fine.
+            raise
         except Exception as e:
             logger.error(f"Error stripping EXIF or reading image: {e}")
             raise HTTPException(status_code=400, detail="Invalid image file or format.")

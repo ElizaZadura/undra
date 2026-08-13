@@ -688,8 +688,18 @@
                 if (loadingBubble) loadingBubble.remove();
 
                 if (!response.ok) {
-                    const errData = await response.json();
-                    appendMessage('ai', `Error: ${errData.detail || 'Could not communicate with the server.'}`);
+                    // A crashed instance returns 503 with an empty body, and
+                    // response.json() throws on it — which threw us into the
+                    // catch below, so a dead server was reported as a dead
+                    // network. Read the body defensively and say which it was.
+                    let detail = '';
+                    try { detail = (await response.json()).detail || ''; } catch (e) { }
+                    if (!detail) {
+                        detail = response.status >= 500
+                            ? `The server could not handle that request (${response.status}). If you sent a photo, try a smaller one.`
+                            : `Request failed (${response.status}).`;
+                    }
+                    appendMessage('ai', `Error: ${detail}`);
                     return;
                 }
 

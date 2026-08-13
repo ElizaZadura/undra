@@ -595,28 +595,49 @@
                 .replace(/\*([^\s*][^*\n]*)\*/g, '<em>$1</em>')
                 .replace(/`([^`\n]+)`/g, '<code class="bg-gray-200 rounded px-1 text-[0.9em]">$1</code>');
 
-            let html = '', list = null;
-            const closeList = () => { if (list) { html += `</${list}>`; list = null; } };
+            // A stack, not a single open list, and blank lines do not close
+            // anything. Both matter, and the first version got both wrong in a
+            // way that was only visible on a phone:
+            //
+            //   1. Your Cylinder Lock (*Tvättlås*): ...
+            //      - DATUM (top row): ...
+            //   2. Selecting a Date & Time Slot: ...
+            //
+            // The model indents bullets under numbered steps and separates the
+            // steps with blank lines. Closing the <ol> for either one and
+            // opening a fresh one restarts the counter, so all three steps
+            // rendered as "1." — visible in the second take of the tvättstuga
+            // scene, 13 August. Nested bullets now open a <ul> inside the list
+            // that is already open, and only a paragraph or a heading closes
+            // anything.
+            const OL = '<ol class="list-decimal pl-5 space-y-1 my-1">';
+            const UL = '<ul class="list-disc pl-5 space-y-1 my-1">';
+
+            let html = '', stack = [];
+            const closeTo = n => { while (stack.length > n) html += `</${stack.pop()}>`; };
+            const top = () => stack[stack.length - 1];
 
             for (const raw of escapeHTML(text).split(/\r?\n/)) {
                 const line = raw.trim();
-                if (!line) { closeList(); continue; }
+                if (!line) continue;          // deliberately not a list terminator
                 let m;
                 if ((m = line.match(/^#{1,6}\s+(.*)$/))) {
-                    closeList();
+                    closeTo(0);
                     html += `<p class="font-bold text-lund-navy mt-3 mb-1">${inline(m[1])}</p>`;
                 } else if ((m = line.match(/^[-*•]\s+(.*)$/))) {
-                    if (list !== 'ul') { closeList(); html += '<ul class="list-disc pl-5 space-y-1 my-1">'; list = 'ul'; }
+                    if (top() === 'ol') { html += UL; stack.push('ul'); }
+                    else if (top() !== 'ul') { closeTo(0); html += UL; stack.push('ul'); }
                     html += `<li>${inline(m[1])}</li>`;
                 } else if ((m = line.match(/^\d+[.)]\s+(.*)$/))) {
-                    if (list !== 'ol') { closeList(); html += '<ol class="list-decimal pl-5 space-y-1 my-1">'; list = 'ol'; }
+                    if (top() === 'ul' && stack.length > 1) closeTo(1);   // leave the ol open
+                    else if (top() !== 'ol') { closeTo(0); html += OL; stack.push('ol'); }
                     html += `<li>${inline(m[1])}</li>`;
                 } else {
-                    closeList();
+                    closeTo(0);
                     html += `<p class="my-1">${inline(line)}</p>`;
                 }
             }
-            closeList();
+            closeTo(0);
             return html;
         }
 

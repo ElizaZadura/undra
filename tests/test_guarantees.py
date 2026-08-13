@@ -1297,6 +1297,25 @@ class ChatRenderingTest(unittest.TestCase):
         """A star followed by a space opens nothing, so "2 * 3 * 4" survives."""
         self.assertIn(r"\*([^\s*][^*\n]*)\*", self.js)
 
+    def test_a_blank_line_does_not_end_a_list(self):
+        """The model separates numbered steps with blank lines. Treating one as
+        a terminator closes the <ol> and the next step restarts the counter, so
+        three steps render as "1." three times — which is what the second
+        tvättstuga take shows."""
+        js = self.js
+        start = js.index("function renderRich")
+        body = js[start:js.index("function appendMessage", start)]
+        self.assertIn("if (!line) continue;", body)
+
+    def test_nested_bullets_stay_inside_the_numbered_list(self):
+        """Same bug, other half: the model indents bullets under each numbered
+        step, and closing the <ol> to open a <ul> also restarts the counter."""
+        js = self.js
+        start = js.index("function renderRich")
+        body = js[start:js.index("function appendMessage", start)]
+        self.assertIn("stack", body)
+        self.assertIn("closeTo(1)", body)   # leave the ol open, close the ul
+
     def test_pre_wrap_is_gone_from_the_assistant_bubble(self):
         """renderRich emits block elements; pre-wrap on top of them doubles
         every gap. The user's bubble keeps it — that one is plain text with a

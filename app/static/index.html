@@ -564,6 +564,62 @@
         }
 
         // Render Chat message helpers
+        // The model answers in Markdown, because that is what models do. Until
+        // 13 August the bubble printed it raw: "2. **Dates (*Datum*):**" reached
+        // the user exactly like that. The answer was right and looked like a
+        // dump — noticed while reviewing footage for the submission video, in
+        // the one scene the submission rests on.
+        //
+        // Deliberately a small whitelist rather than a Markdown library. This
+        // string is model output, and model output is shaped by user input —
+        // including text inside a photograph, which is a channel that reaches
+        // the model without ever passing a keyboard. So: escape everything
+        // first, then re-introduce a fixed set of formatting. Nothing here can
+        // emit an attribute, a tag name or a URL, so there is no way through
+        // even if the model is talked into trying.
+        // escapeHTML() already exists above and does exactly this. A second
+        // escaper differing only in the case of one letter is how two of them
+        // drift apart, so this uses that one.
+        function renderRich(text) {
+            // Bold before italic: the two-star form has to be consumed first or
+            // the single-star rule eats half of it.
+            // `.+?` and not `[^*]+`: the model nests italics inside bold —
+            // "**Dates (*Datum*):**" is verbatim from the footage — and a
+            // class that excludes the star cannot cross the inner pair, so
+            // the bold silently failed to match and printed raw.
+            //
+            // The italic rule requires a non-space after the opening star so
+            // that arithmetic ("2 * 3 * 4") is not turned into emphasis.
+            const inline = s => s
+                .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+                .replace(/\*([^\s*][^*\n]*)\*/g, '<em>$1</em>')
+                .replace(/`([^`\n]+)`/g, '<code class="bg-gray-200 rounded px-1 text-[0.9em]">$1</code>');
+
+            let html = '', list = null;
+            const closeList = () => { if (list) { html += `</${list}>`; list = null; } };
+
+            for (const raw of escapeHTML(text).split(/\r?\n/)) {
+                const line = raw.trim();
+                if (!line) { closeList(); continue; }
+                let m;
+                if ((m = line.match(/^#{1,6}\s+(.*)$/))) {
+                    closeList();
+                    html += `<p class="font-bold text-lund-navy mt-3 mb-1">${inline(m[1])}</p>`;
+                } else if ((m = line.match(/^[-*•]\s+(.*)$/))) {
+                    if (list !== 'ul') { closeList(); html += '<ul class="list-disc pl-5 space-y-1 my-1">'; list = 'ul'; }
+                    html += `<li>${inline(m[1])}</li>`;
+                } else if ((m = line.match(/^\d+[.)]\s+(.*)$/))) {
+                    if (list !== 'ol') { closeList(); html += '<ol class="list-decimal pl-5 space-y-1 my-1">'; list = 'ol'; }
+                    html += `<li>${inline(m[1])}</li>`;
+                } else {
+                    closeList();
+                    html += `<p class="my-1">${inline(line)}</p>`;
+                }
+            }
+            closeList();
+            return html;
+        }
+
         function appendMessage(sender, text, isAI = false, isRefusal = false, routing = []) {
             const chatMessages = document.getElementById('chat-messages');
 
@@ -580,8 +636,12 @@
             const bubble = document.createElement('div');
 
             if (sender === 'user') {
-                bubble.className = "bg-lund-navy text-white rounded-2xl px-4 py-2.5 text-sm shadow-sm";
-                bubble.innerHTML = text;
+                bubble.className = "bg-lund-navy text-white rounded-2xl px-4 py-2.5 text-sm shadow-sm whitespace-pre-wrap";
+                // textContent, not innerHTML: the user's own typing is never
+                // markup. The caller passes it raw and unescaped now — it used
+                // to arrive pre-escaped with a literal <br> in it, which this
+                // would print as characters. One place decides, and it is here.
+                bubble.textContent = text;
             } else {
                 if (isRefusal) {
                     // Refusal styling (conspicuous safety/routing border)
@@ -595,7 +655,9 @@
                 const headerColor = isRefusal ? 'text-amber-800' : 'text-lund-navy';
 
                 let html = `<span class="text-xs font-bold ${headerColor} block mb-1">${titleText}</span>`;
-                html += `<div class="whitespace-pre-wrap leading-relaxed">${text}</div>`;
+                // No whitespace-pre-wrap any more: renderRich emits real block
+                // elements, and pre-wrap on top of them doubles every gap.
+                html += `<div class="leading-relaxed">${renderRich(text)}</div>`;
 
                 // Add direct routing links if provided
                 if (routing && routing.length > 0) {
@@ -635,10 +697,12 @@
 
             if (!text && !hasImage) return;
 
-            // 1. User Message render in local Chat with robust HTML escaping for XSS prevention
-            let renderText = escapeHTML(text);
+            // 1. User message, passed raw. appendMessage sets it with
+            //    textContent, so escaping here would show as characters — and
+            //    escaping in two places is how one of them gets missed.
+            let renderText = text;
             if (hasImage) {
-                renderText = `[Uploaded Photo]${text ? '<br>' + escapeHTML(text) : ''}`;
+                renderText = `[Uploaded Photo]${text ? '\n' + text : ''}`;
             }
             appendMessage('user', renderText);
 

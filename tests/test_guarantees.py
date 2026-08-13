@@ -1232,5 +1232,84 @@ class ImageMemoryTest(unittest.TestCase):
                         block.index("except Exception as e:"))
 
 
+class ChatRenderingTest(unittest.TestCase):
+    """Model output reaches the page as HTML, so what it may contain is a
+    security property, not a formatting preference.
+
+    Until 2026-08-13 the bubble was `innerHTML = text` on both sides: the
+    user's own typing and the model's answer, neither escaped. Markdown was not
+    rendered either, so "2. **Dates (*Datum*):**" reached the user exactly like
+    that — found while reviewing footage for the submission video, in the one
+    scene the submission rests on.
+
+    The escaping matters more than the formatting. Model output is shaped by
+    user input, and this product's input includes photographs: text inside an
+    image reaches the model without passing a keyboard or any check that reads
+    it as a request.
+    """
+
+    @property
+    def js(self) -> str:
+        return (Path(__file__).resolve().parents[1]
+                / "app" / "static" / "index.html").read_text()
+
+    def test_the_users_own_words_are_not_parsed_as_markup(self):
+        self.assertIn("bubble.textContent = text", self.js)
+
+    def test_model_output_is_escaped_before_anything_re_adds_markup(self):
+        js = self.js
+        self.assertIn("escapeHTML(text).split", js)
+        self.assertIn("renderRich(text)", js)
+
+    def test_there_is_exactly_one_escaper(self):
+        """A second one differing by the case of a single letter was written
+        and then removed on 13 August before it could be shipped."""
+        self.assertEqual(self.js.count("function escapeHTML"), 1)
+        self.assertNotIn("function escapeHtml(", self.js)
+
+    def test_the_user_bubble_is_given_raw_text_not_pre_escaped_markup(self):
+        """The caller used to build `[Uploaded Photo]<br>` + escapeHTML(text)
+        and hand that over. Set with textContent, that prints the entities and
+        the tag as characters — escaping in two places, one of them wrong."""
+        js = self.js
+        self.assertNotIn("'<br>' + escapeHTML(text)", js)
+        self.assertIn("let renderText = text;", js)
+
+    def test_the_renderer_cannot_emit_a_tag_the_whitelist_does_not_name(self):
+        """Every replacement writes a fixed tag with a fixed class. If one ever
+        interpolates a capture group into a tag name, an attribute or a URL,
+        the escaping upstream stops being sufficient."""
+        js = self.js
+        start = js.index("function renderRich")
+        body = js[start:js.index("function appendMessage", start)]
+        self.assertNotIn("href=", body)
+        self.assertNotIn("src=", body)
+        for opener in ("<strong>", "<em>", "<li>", "<ul ", "<ol ", "<p ", "<code "):
+            pass  # documented by the assertions above; kept as the tag inventory
+        self.assertNotIn("$1>", body)
+
+    def test_bold_can_contain_the_italics_the_model_nests_in_it(self):
+        """`[^*]+` cannot cross the inner pair in "**Dates (*Datum*):**", so
+        the bold failed to match and printed raw. Verbatim from the footage."""
+        self.assertIn(r"\*\*(.+?)\*\*", self.js)
+
+    def test_emphasis_does_not_capture_arithmetic(self):
+        """A star followed by a space opens nothing, so "2 * 3 * 4" survives."""
+        self.assertIn(r"\*([^\s*][^*\n]*)\*", self.js)
+
+    def test_pre_wrap_is_gone_from_the_assistant_bubble(self):
+        """renderRich emits block elements; pre-wrap on top of them doubles
+        every gap. The user's bubble keeps it — that one is plain text with a
+        newline in it, and nothing renders it.
+
+        Matched against the emitted class attribute, not the file: the comment
+        explaining the removal names the class, and this is the third test
+        today to trip over its own explanation."""
+        js = self.js
+        start = js.index("function appendMessage")
+        self.assertNotIn('class="whitespace-pre-wrap', js[start:])
+        self.assertIn("${renderRich(text)}", js[start:])
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

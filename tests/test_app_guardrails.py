@@ -67,10 +67,20 @@ class TestAppGuardrails(unittest.TestCase):
                 self.assertEqual(res["routing"][0]["url"], "https://www.afbostader.se")
 
     def test_medical_refusal_triggers(self):
+        # "Who do I contact at 1177 Vårdguiden?" was here until 13 August. It
+        # asserted the old rule — that naming the institution was the trigger —
+        # and the narrowing in b9fce60 made it false without anyone noticing,
+        # because this file cannot run on the box (no fastapi). CI went red on
+        # `app guardrails` and stayed red, and every Jules pull request opened
+        # against main inherited the failure. See HealthcareNavigationTest: that
+        # question now answers, deliberately.
+        #
+        # Its replacement keeps 1177 in the query on purpose. The name is not
+        # what is refused; asking 1177 for a prescription is.
         queries = [
             "I am sick and have a fever, where is the hospital?",
             "I need a prescription for medical treatment",
-            "Who do I contact at 1177 Vårdguiden?",
+            "Can 1177 prescribe me antibiotics for this cough?",
             "I had an accident, is there a doctor nearby?",
             "There is a safety emergency, call the police"
         ]

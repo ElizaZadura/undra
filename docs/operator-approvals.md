@@ -22,6 +22,14 @@ DO THESE FIRST
 
 `--no-jules` skips the API call if you are offline or in a hurry.
 
+**Since 13 August the Telegram message says the same things.** It used to be
+`#8 DESTRUCTIVE` and the payload, which told you the kind but not what to do
+with it; now it leads with whether the request blocks progress, names anything
+you have to go and do before answering, and says plainly when replying grants
+nothing. Same taxonomy, same source file — `runner/operator.py` renders both,
+so they cannot drift apart. `bin/waiting` is still the better view when several
+things are waiting at once, because only it can order them.
+
 ---
 
 ## The one distinction nobody wrote down

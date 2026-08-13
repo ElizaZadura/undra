@@ -153,26 +153,37 @@ These are excluded from the $20.45 because that figure answers "what does this b
 cost to run", and a personal subscription bought before the business existed does not.
 
 **A note on the estimate in our own logs.** The ledger's internal estimate of total model
-spend is **$10.38**, computed from per-token rates transcribed from Google's pricing page and
-applied to metered token counts. That figure covers every call the agent made, on both API
-projects. Only one of those projects is billable: `undra-504613` carries the paid key, and
-`undra-free` carries a free-tier key whose calls cost nothing.
+spend is **$12.26** across 517 calls, computed from per-token rates transcribed from Google's
+pricing page and applied to metered token counts. That figure covers every call the agent
+made, on both API projects. Only one of those projects is billable: `undra-504613` carries the
+paid key, and `undra-free` carries a free-tier key whose calls cost nothing.
 
-Split by the key that served each call, **as of 2026-08-12T09:16Z**:
+**We cannot split that estimate between the two keys, and until 13 August this document
+claimed we could.** The ledger records the *role* a call was made in — `planning` or `ops` —
+not the key that served it. The two were meant to line up, but the runner falls back to the
+paid key when the free key stops serving mid-cycle, and 28 of 55 cycles logged doing exactly
+that; 60 of the 153 `ops` calls were made inside one. A dollar column headed "free" would
+therefore have been a guess wearing the clothes of a reading, which is the specific failure
+this section was rewritten to remove in the first place. It has been taken out rather than
+restated more carefully, because there is no more careful version of a number the ledger
+does not hold.
 
-| Key | Calls | Estimated |
-|---|---:|---:|
-| Paid (`undra-504613`) | 233 | $5.31 |
-| Free (`undra-free`) | 123 | $2.51 |
-| Recorded before the ledger tracked the key | 75 | $2.56 |
-| **Total** | **431** | **$10.38** |
+What the ledger does support, read at 2026-08-13T08:14Z:
 
-The agent is still running, so this table is a reading rather than a final figure; it is
-regenerated from the ledger before submission. Google billed **$3.18** against the paid key
-through 10 August, the last day the invoice covers. Measured on 11 August, the ledger's
+| Recorded as | Calls |
+|---|---:|
+| `planning` — paid key by design | 289 |
+| `ops` — free key by design, fell back to paid on 28 of 55 cycles | 153 |
+| Recorded before the ledger tracked the role at all | 75 |
+| **Total** | **517** |
+
+The agent is still running, so the call counts are a reading rather than a final figure; they
+are regenerated from the ledger before submission. Google billed **$3.18** against the paid
+key through 10 August, the last day the invoice covers. Measured on 11 August, the ledger's
 estimate for that same key and period ran about 7% above the invoice — ordinary estimation
-error, in the conservative direction. That comparison is not reproducible from the table
-above, which keeps moving as the agent runs; only the billed figure is fixed.
+error, in the conservative direction. That comparison rests on the same role-versus-key
+attribution described above, so treat it as an order of magnitude rather than a precise
+reconciliation; only the billed figure is fixed.
 **$3.18 is the billed figure and the one we quote.** The estimate is what the same volume of
 work would have cost had none of it run on the free tier, and it is the number our spend
 ceiling is enforced against, deliberately, because a budget guard should err toward stopping

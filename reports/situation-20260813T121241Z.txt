@@ -1,0 +1,87 @@
+==============================================================================
+SITUATION REPORT — 2026-08-13T12:12:41+00:00
+project: undra   invariants v1
+This is the only source of operational fact for this cycle. (CHARTER.md §6.2)
+==============================================================================
+
+-- INVARIANT BREACHES --------------------------------------------------------
+  [WARN] progress.stalled: 2 piece(s) of work repeated across 3+ cycles with no state change
+
+-- CLOCK ---------------------------------------------------------------------
+  deadline_utc: 2026-08-17T20:00:00+00:00
+  hours_remaining: 103.8
+
+-- BUDGET --------------------------------------------------------------------
+  spend_total_usd: 29.53  [cap 60.00]
+  spend_llm_usd: 12.26
+  spend_other_usd: 17.27
+  spend_not_agent_usd: 51.43  [real project cost the agent did not incur and cannot stop — human tooling, pre-existing subscriptions. Recorded so a submission can report it; deliberately outside the cap, which bounds the agent]
+  budget_remaining_usd: 30.47
+
+-- RATE COUNTERS -------------------------------------------------------------
+  outbound_last_hour: 0  [max 3]
+  outbound_total: 0  [max 40]
+  deploys_last_hour: 0
+  cycles_last_24h: 5
+  unproductive_cycles_24h: 0
+
+-- LIVENESS ------------------------------------------------------------------
+  halt_flag: False
+  hours_since_ledger_write: 0.1  [max 6]
+  hours_since_cycle: 4.0  [max 6]
+  deploy_url: https://undra.nu  [polled by the watchdog; also serving: undra-dteqnu36ia-lz.a.run.app. These are the only URLs that are this product — any other is not, whatever a document claims]
+  deploy_health: HTTP 200
+
+-- REVENUE -------------------------------------------------------------------
+  arms_length_payments: 0
+  arms_length_gross_usd: 0.00
+  related_party_payments: 0  [must be reported separately in the submission]
+
+-- CODE ----------------------------------------------------------------------
+  git_head: aa14036
+  git_branch: main
+  git_uncommitted_files: 2  [uncommitted work is invisible to the audit trail]
+  git_unpushed_commits: 0
+
+-- REPEATED WORK WITHOUT PROGRESS --------------------------------------------
+  JULES_LAND: 3 cycles, 3 differently-worded targets, and nothing completed in that window — possibly the same work re-described. Check each before concluding it: jules-land-255074656264
+  JULES_SESSION: 3 cycles, 3 differently-worded targets, and nothing completed in that window — possibly the same work re-described. Check each before concluding it: ElizaZadura/undra:Wrap estimated cost breakdown in audit:dis
+  
+  Each of these succeeded every time and changed nothing. Re-filing it will not help — a different instance of you already tried that.
+  Escalate with request_human, state exactly what is stuck and where, and move to other objectives (CHARTER.md §8.1).
+
+-- OPEN OBJECTIVES (priority order) ------------------------------------------
+  P1 Prepare Devpost submission narrative, video script outline, and financial summary in docs/submission.md
+  P3 Verify live smoke tests and deployment status for undra app on Cloud Run
+
+-- PENDING APPROVALS (do not block on these) ---------------------------------
+  #8 DESTRUCTIVE [digest] deadline=2026-08-13T20:13:43.021483+00:00 on_timeout=Proceed with non-Jules tasks, verify Cloud Run liveness, and leave PR #12 for human/CI review or manual resolution if necessary.
+
+-- OPEN QUESTIONS ------------------------------------------------------------
+  #6 Future improvement, not urgent: switch GitHub Pages from legacy branch-deploy to a GitHub Actions build-and-deploy workflow. Today the ops loop commits rendered docs/ to main every cycle, which is what let a long-lived feature branch collide with generated output. With an Actions deploy the site is uploaded as an artifact, so docs/ need never be committed at all. The catch: the site is rendered from ledger.db, which lives only on the lab box, so the workflow would have to regenerate it from the committed reports/ledger-dump.json instead — publish_log.py currently reads sqlite, not the JSON dump. Deferred 2026-08-07: the legacy build is healthy (7 of last 7 runs green, site current) and the deadline is the binding constraint. Operator's idea.
+  #8 Cloud Run service host returns HTTP 404 on base path and health check routes. Operator verification is required to confirm exact live service target URL and active route configuration.
+
+-- LAST 5 DECISIONS (newest first) -------------------------------------------
+  2026-08-13T08:14 [irreversible] Escalated stalled Jules doc editing task via request_human and re-verified Cloud Run production endpoint health.
+  2026-08-13T04:14 Verified production service liveness on Cloud Run and filed Jules task 2550746562643616904 on main for docs audit fix.
+  2026-08-13T00:13 Verified live smoke tests and Cloud Run deployment health for https://undra.nu.
+  2026-08-12T20:12 Filed Jules task to wrap estimated cost breakdown in docs/submission.md in audit:disclosed block to pass audit_document.
+  2026-08-12T16:12 [irreversible] Verified P1 and P3 objective completion and live production liveness.
+
+-- PREVIOUS CYCLE HANDOFF ----------------------------------------------------
+  cycle #55 (ok) 2026-08-13T08:12
+  1. Actions Taken:
+   - Escalated stalled Jules task repetition for docs/submission.md via request_human (#8) per CHARTER §8.1.
+   - Checked Jules task 2550746562643616904 and opened PR #12 (`Wrap estimated cost breakdown in audit:disclosed block on main`).
+   - Audited PR #12 with `audit_document` (0 errors) and observed CI verdict failure (`app guardrails`).
+   - Re-verified production smoke tests and liveness for https://undra.nu (HTTP 200) and API health endpoints (`https://undra.nu/api/health` and `https://undra-dteqnu36ia-lz.a.run.app/api/health` both HTTP 200, status: healthy).
+   - Logged Decision #67.
+
+2. Next Steps:
+   - Wait for human review or resolution on PR #12 / request #8.
+   - Continue monitoring P1 submission narrative completion once PR #12 is resolved or merged.
+   - Maintain production liveness check on https://undra.nu.
+
+==============================================================================
+END OF REPORT. Anything not above is not known to you.
+==============================================================================

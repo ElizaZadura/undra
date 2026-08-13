@@ -482,3 +482,77 @@ class ResponseDeterminationTest(unittest.TestCase):
                        "non-emergency healthcare queries in Sweden.")
         self.assertIsNotNone(check_query_guardrails(explanation))
         self.assertIsNone(check_response_guardrails(explanation))
+
+
+class ImagePathScanTest(unittest.TestCase):
+    """A photograph is the one input nothing reads before the model does.
+
+    `check_query_guardrails` reads typed text. It cannot read a picture. So
+    when someone uploads their Migrationsverket decision, or a Skatteverket
+    letter with their personnummer on it, or their tenancy contract, the output
+    scan is the only net there is — and a summary of the reader's own permit
+    decision is immigration advice whether or not it is phrased as a
+    determination about them.
+
+    The wider rules apply only when an image was attached. On the text path
+    they would be far too broad: "you will get a letter from Migrationsverket"
+    is a fine sentence in an answer about arrival logistics.
+    """
+
+    DOCUMENTS = [
+        ("immigration",
+         "This document appears to be a residence permit or visa letter "
+         "from Migrationsverket."),
+        ("tax",
+         "This looks like a letter from Skatteverket with your personnummer."),
+        ("legal",
+         "This contract seems to have a tenancy dispute with your landlord."),
+        ("medical_safety",
+         "This picture shows severe symptoms that require calling 1177."),
+    ]
+
+    # Everything the product exists to do with a photograph.
+    SIGNS = [
+        "This is a laundry booking board (bokningstavla). The red signs show "
+        "the available time slots and the numbers are days of the month.",
+        # `landlord` was in the tenancy-document list until this sentence was
+        # written down, and it refused a correct answer about a laundry room.
+        "This picture shows a laundry booking board. When you move in, your "
+        "landlord gives you a lock cylinder stamped with your apartment "
+        "number, which you can see in the picture.",
+        "This sign explains how to sort waste: matavfall for food, restavfall "
+        "for everything else.",
+        "This is a Skånetrafiken ticket machine. Buy a student ticket in the "
+        "app instead.",
+    ]
+
+    # Correct sentences that must survive the narrower text-path scan.
+    PROSE = [
+        "You will get a decision letter from Migrationsverket once your "
+        "application is processed.",
+        "Skatteverket sends a letter confirming your folkbokföring.",
+        "Your housing contract comes from AF Bostäder; read the terms and "
+        "conditions before signing.",
+    ]
+
+    def test_a_photographed_document_is_refused(self):
+        for category, text in self.DOCUMENTS:
+            with self.subTest(text=text[:44]):
+                res = check_response_guardrails(text, has_image=True)
+                self.assertIsNotNone(res)
+                self.assertEqual(res["category"], category)
+
+    def test_a_photographed_sign_is_the_product_working(self):
+        for text in self.SIGNS:
+            with self.subTest(text=text[:44]):
+                self.assertIsNone(check_response_guardrails(text, has_image=True))
+
+    def test_the_wider_rules_do_not_reach_the_text_path(self):
+        for text in self.PROSE:
+            with self.subTest(text=text[:44]):
+                self.assertIsNone(check_response_guardrails(text, has_image=False))
+                # ...and are genuinely wider, not merely unused.
+                self.assertIsNotNone(
+                    check_response_guardrails(self.DOCUMENTS[0][1], has_image=True))
+                self.assertIsNone(
+                    check_response_guardrails(self.DOCUMENTS[0][1], has_image=False))

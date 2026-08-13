@@ -1243,8 +1243,15 @@ class ResponseScanTest(unittest.TestCase):
     def test_the_response_path_uses_the_response_check(self):
         src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
         after = src.split("post-generation guardrails")[1]
-        self.assertIn("check_response_guardrails(raw_text)", after)
+        self.assertIn("check_response_guardrails(", after)
         self.assertNotIn("check_query_guardrails(raw_text)", after)
+
+    def test_the_image_path_widens_the_scan(self):
+        """Nothing reads a photograph before the model does, so the answer is
+        the only place a photographed permit decision can be caught."""
+        src = (Path(__file__).resolve().parents[1] / "app" / "main.py").read_text()
+        after = src.split("post-generation guardrails")[1]
+        self.assertIn("has_image=pil_img is not None", after)
 
     def test_an_explanation_survives_the_response_check(self):
         sys.path.insert(0, str(Path(__file__).resolve().parents[1]))

@@ -279,7 +279,14 @@ async def chat(
         # patterns refused "1177 Vårdguiden provides medical guidance" for
         # containing the words "medical guidance", which silently undid the
         # 12 August narrowing for exactly the questions it was written for.
-        post_guardrail_result = check_response_guardrails(raw_text)
+        #
+        # has_image widens the scan. The query check reads typed text and
+        # cannot read a photograph, so when one is attached nothing has
+        # examined the actual subject of the request by the time the model
+        # answers — a summary of the reader's own permit decision is
+        # immigration advice however it is phrased.
+        post_guardrail_result = check_response_guardrails(
+            raw_text, has_image=pil_img is not None)
         if post_guardrail_result:
             logger.info(f"Post-generation guardrail triggered for category: {post_guardrail_result['category']}")
             return post_guardrail_result

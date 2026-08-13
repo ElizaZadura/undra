@@ -343,21 +343,80 @@ RESPONSE_DETERMINATION_PATTERNS: Dict[str, List[str]] = {
 }
 
 
-def check_response_guardrails(text: str) -> Optional[Dict[str, Any]]:
-    """Scan a model-generated answer for a determination about the reader.
+# Applied only when the request carried an image.
+#
+# The asymmetry is the reason. `check_query_guardrails` reads the user's typed
+# text; it cannot read a photograph. So when someone uploads a picture of a
+# Migrationsverket decision, or a Skatteverket letter with their personnummer
+# on it, or their tenancy contract, nothing has examined the actual subject of
+# the request by the time the model answers. The output scan is the only net
+# there is, and it has to be wider than the one covering text — a summary of
+# the reader's own permit decision is immigration advice whether or not it is
+# phrased as a determination.
+#
+# Not applied to text-only answers, where it would be far too broad: "you will
+# get a letter from Migrationsverket" is a fine sentence in an answer about
+# arrival logistics, and the query guard has already seen the question.
+IMAGE_DOCUMENT_PATTERNS: Dict[str, List[str]] = {
+    "immigration": [
+        r"(?=.*\b(document|letter|form|card|decision|notice|permit|application|"
+        r"passport|picture|photo|image|screenshot)\b)"
+        r"(?=.*\b(residence permit|uppehållstillstånd|visa|work permit|"
+        r"citizenship|migrationsverket|asylum|schengen)\b)",
+    ],
+    "tax": [
+        r"(?=.*\b(document|letter|form|card|decision|notice|statement|"
+        r"picture|photo|image|screenshot)\b)"
+        r"(?=.*\b(skatteverket|personnummer|samordningsnummer|folkbokföring|"
+        r"deklaration|coordination number|personal identity number|"
+        r"tax return)\b)",
+    ],
+    "legal": [
+        r"(?=.*\b(document|letter|form|contract|agreement|notice|"
+        r"picture|photo|image|screenshot)\b)"
+        # Deliberately not `landlord` or `dispute` on their own. The second
+        # term has to name a tenancy *document*, because "your landlord gives
+        # you a lock cylinder, which you can see in the picture" is a correct
+        # answer about a laundry room and was refused as a legal matter while
+        # `landlord` was in this list.
+        r"(?=.*\b(tenancy|lease|hyresavtal|andrahand|sublet|eviction|"
+        r"rental (contract|agreement)|clause|terms and conditions)\b)",
+    ],
+    "medical_safety": [
+        r"(?=.*\b(document|letter|form|picture|photo|image|screenshot|"
+        r"prescription|test result|referral)\b)"
+        r"(?=.*\b(diagnosis|prescription|medication|test result|referral|"
+        r"vårdcentral|1177|hospital|journal)\b)",
+    ],
+}
+
+
+def check_response_guardrails(text: str, *,
+                              has_image: bool = False) -> Optional[Dict[str, Any]]:
+    """Scan a model-generated answer for something it must not have said.
 
     Separate from `check_query_guardrails` on purpose. Running the query
     patterns over an answer refuses the product's own explanations — see the
     note above this function.
+
+    `has_image` widens the scan to cover the model identifying the photograph
+    as a document in a restricted domain, because in that case nothing has read
+    the subject of the request at all.
     """
     if not text:
         return None
 
     text_lower = text.lower()
 
-    for category_id, patterns in RESPONSE_DETERMINATION_PATTERNS.items():
-        for pattern in patterns:
-            if re.search(pattern, text_lower):
+    sets = [RESPONSE_DETERMINATION_PATTERNS]
+    if has_image:
+        sets.append(IMAGE_DOCUMENT_PATTERNS)
+
+    for patterns_by_category in sets:
+        for category_id, patterns in patterns_by_category.items():
+            for pattern in patterns:
+                if not re.search(pattern, text_lower):
+                    continue
                 config = REFUSAL_CATEGORIES[category_id]
                 return {
                     "refused": True,

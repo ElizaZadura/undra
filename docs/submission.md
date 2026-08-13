@@ -90,16 +90,27 @@ outright rather than relying on prompt instructions alone.
 **The four restricted categories** (CHARTER §3.3): Immigration and Visas; Taxes and Civil
 Registration; Legal Contracts and Tenancy Disputes; Medical and Safety.
 
-**Implementation** — `app/guardrails.py`, 277 lines, **112 regular-expression patterns**
-across the four categories, matching Swedish and English regulatory terminology
-(*Migrationsverket*, *Skatteverket*, *personnummer*, *uppehållstillstånd*, *residence
-permit*, *deposit dispute*, *112*, and so on):
+**Implementation** — `app/guardrails.py`, 523 lines, **144 regular-expression patterns**
+matching Swedish and English regulatory terminology (*Migrationsverket*, *Skatteverket*,
+*personnummer*, *uppehållstillstånd*, *residence permit*, *deposit dispute*, *112*, and so
+on), in three sets that do different jobs:
 
-- **Pre-generation**: the query is scanned locally before anything is sent to the Gemini
-  API. A match blocks the query deterministically, and no call is made.
-- **Post-generation**: the model's own output is passed through the same scanner. This
-  covers adversarial phrasing and image-only queries, where there is no input text to match
-  against — a defect found and fixed on 7 August after review (§5.2).
+- **Pre-generation — 112 patterns.** The query is scanned locally before anything is sent to
+  the Gemini API. A match blocks it deterministically, no call is made, and the refusal
+  returns in about 0.2 seconds. This is the check that earns the word *deterministic*: it
+  cannot be argued out of by rephrasing, retrying or instructing the model.
+- **Post-generation — 28 patterns.** The model's output is scanned for a determination about
+  the reader: a dosage, a diagnosis, an assertion about their eligibility or liability. It is
+  deliberately *not* the pre-generation set. Running the question's patterns over an answer
+  refuses the product's own explanations, which is what happened between 12 and 13 August and
+  is documented in §3.1. This check is weaker than the first by nature rather than by
+  omission, and §3.2 says why.
+- **Image path — 4 further patterns.** `check_query_guardrails` reads typed text and cannot
+  read a photograph, so when an image is attached nothing has examined the subject of the
+  request by the time the model answers. The output scan widens there to cover the model
+  identifying the photograph as an official document — a permit decision, a tax letter, a
+  tenancy contract — because a summary of the reader's own permit decision is immigration
+  advice however it is phrased.
 - **The "Route" UX**: a triggered guardrail returns a structured refusal card naming the
   responsible authority and linking to it directly — Migrationsverket, Skatteverket, AF
   Bostäder and the LU International Desk, 1177 Vårdguiden and 112.
@@ -153,7 +164,7 @@ These are excluded from the $20.45 because that figure answers "what does this b
 cost to run", and a personal subscription bought before the business existed does not.
 
 **A note on the estimate in our own logs.** The ledger's internal estimate of total model
-spend is **$12.26** across 517 calls, computed from per-token rates transcribed from Google's
+spend is **$12.81** across 539 calls, computed from per-token rates transcribed from Google's
 pricing page and applied to metered token counts. That figure covers every call the agent
 made, on both API projects. Only one of those projects is billable: `undra-504613` carries the
 paid key, and `undra-free` carries a free-tier key whose calls cost nothing.
@@ -161,21 +172,21 @@ paid key, and `undra-free` carries a free-tier key whose calls cost nothing.
 **We cannot split that estimate between the two keys, and until 13 August this document
 claimed we could.** The ledger records the *role* a call was made in — `planning` or `ops` —
 not the key that served it. The two were meant to line up, but the runner falls back to the
-paid key when the free key stops serving mid-cycle, and 28 of 55 cycles logged doing exactly
-that; 60 of the 153 `ops` calls were made inside one. A dollar column headed "free" would
+paid key when the free key stops serving mid-cycle, and 28 of 57 cycles logged doing exactly
+that; 60 of the 162 `ops` calls were made inside one. A dollar column headed "free" would
 therefore have been a guess wearing the clothes of a reading, which is the specific failure
 this section was rewritten to remove in the first place. It has been taken out rather than
 restated more carefully, because there is no more careful version of a number the ledger
 does not hold.
 
-What the ledger does support, read at 2026-08-13T08:14Z:
+What the ledger does support, read at 2026-08-13T16:30Z:
 
 | Recorded as | Calls |
 |---|---:|
-| `planning` — paid key by design | 289 |
-| `ops` — free key by design, fell back to paid on 28 of 55 cycles | 153 |
+| `planning` — paid key by design | 302 |
+| `ops` — free key by design, fell back to paid on 28 of 57 cycles | 162 |
 | Recorded before the ledger tracked the role at all | 75 |
-| **Total** | **517** |
+| **Total** | **539** |
 
 The agent is still running, so the call counts are a reading rather than a final figure; they
 are regenerated from the ledger before submission. Google billed **$3.18** against the paid
@@ -239,11 +250,11 @@ discover. She has been asked whether other exchange students at her university w
 test; any who do would be arms-length users, and we will report them as such if they
 materialise before the deadline.
 
-**Feedback received: one substantive comment, 12 August 2026.** The user reported that the
-assistant's refusals felt broad — that she had tried a range of prompts and most were
-declined. We are not reproducing her words here: she has not yet been asked for consent to be
-quoted, and we would rather submit no testimonial than one obtained without it. She is
-travelling until 19 August, so further testing before the deadline is unlikely.
+**Feedback received: one substantive comment, 12 August 2026, and a defect report on
+13 August.** The user reported that the assistant's refusals felt broad — that she had tried
+a range of prompts and most were declined. We are not reproducing her words here: consent to
+quote her has been requested but not yet returned, and we would rather submit no testimonial
+than one obtained without it. She is travelling until 19 August, after this deadline.
 
 **The comment was acted on, and asking her for specifics overturned our first conclusion.**
 An initial measurement against twenty in-scope questions we wrote ourselves — laundry booking,
@@ -263,28 +274,107 @@ That is topic detection, not the restriction the charter describes. What §3.3 f
 determination about someone's health. Explaining how Swedish healthcare works to a newcomer is
 this product's stated purpose, and refusing it sends the user to a general-purpose chatbot
 that will answer confidently and may be wrong — the exact harm §1.1 identifies. The medical
-category was narrowed on 12 August, with the Operator's explicit recorded approval, to refuse
+category was narrowed on 12 August with the Operator's explicit recorded approval, to refuse
 symptoms, diagnosis, treatment, urgency and mental-health crisis while answering booking,
-registration and orientation questions. Measured at 16/16 navigation questions answered and
-16/16 determinations still refused, pinned in `tests/test_app_guardrails.py`.
+registration and orientation questions.
+
+### 3.1 The fix did not reach the user for a day, and the reason is the finding
+
+An earlier version of this section claimed that narrowing as complete and measured. It was
+neither, and the correction is more useful than the original claim.
+
+**The rule was written down in three places and we changed one.** On 13 August the deployed
+service still refused "what is 1177?". Four separate causes, found in this order:
+
+1. **It was never deployed.** `gcloud builds submit` uploads the working directory, not a
+   branch, and the Cloud Shell clone it was run from had not been pulled since 7 August. The
+   build succeeded, the deploy succeeded, Cloud Run returned HTTP 200 and the watchdog's
+   `deploy_health` check stayed green throughout — none of them look at *what* is running. The
+   12 August fix existed in git and not in the product for 25 hours.
+2. **The answer was scanned with the question's patterns.** `app/main.py` ran
+   `check_query_guardrails` over the model's own output. Defensible while those patterns were
+   topic nouns; wrong the moment they stopped being. A correct answer to "what is 1177?" says
+   "1177 Vårdguiden provides medical guidance", and that was enough to discard it. Measured
+   against production: a residence-permit question refused in 0.21 s with no model call, while
+   "what is 1177?" refused in 5.4 s — the sound of an answer being generated, paid for and
+   thrown away.
+3. **The system instruction still carried the old rule**, listing "calling 1177 or 112" as a
+   refusal topic. The model duly opened with "I cannot provide medical advice" and then
+   answered the question anyway.
+4. **The replacement output check refused the product's own safety boilerplate.** A rule
+   matching "you should see or call a doctor / 112" caught the routing advice the system
+   instruction *tells* the model to give. The effect was non-deterministic: on 13 August, in
+   the same deployment and the same minute, "what's 1177?" was refused in 4.6 s and "what is
+   1177" answered in 4.0 s. Which one you got depended on which sentence the model reached for.
+
+Commits `4b0fbec`, `777370c`, `851ea94` and `2744708`, all 13 August, with the deploy
+verification in `bin/deploy` added so that a build reporting success can no longer stand in
+for the served bytes.
+
+### 3.2 What that taught us about deterministic guardrails
+
+We claim deterministic refusals. That claim is true on the way in and weaker on the way out,
+and the two should not be described in the same sentence.
+
+**The input check earns the word.** It runs before any model call, so a refused question costs
+nothing, returns in about 0.2 seconds, and cannot be argued out of by rephrasing, retrying or
+instructing the model. Everything usually claimed for deterministic guardrails is true of it.
+
+**The output check does not, and cannot.** The question it is asked — is this sentence a
+determination about the reader? — frequently has no answer in the sentence:
+
+> "You should call 112 in an emergency."
+
+General information in an answer about how Swedish healthcare works. A determination if it is
+the reply to someone describing chest pain. Identical text. What separates them is the user's
+question, which the output scan never sees, and even with it the judgement is semantic rather
+than lexical. Patterns written to catch the second reading caught the first, and refused the
+product's core function at random.
+
+The design is therefore deliberately lopsided, and `app/guardrails.py` says so at the point of
+use rather than leaving a pattern list to look more capable than it is:
+
+- the strong deterministic check is on the way in, where a refusal is free and unarguable;
+- generation is constrained by the system instruction, which *does* see the question;
+- the output scan keeps only what is a determination in every context — a numeric dosage, a
+  diagnosis of the reader, an assertion about their eligibility or liability — plus a wider
+  rule for images, where nothing else has read the input at all: `check_query_guardrails` reads
+  typed text and cannot read a photograph, so a summary of the reader's own permit decision has
+  to be caught on the way out or not at all.
+
+The right instrument for the semantic question is a classifier that sees the question and the
+answer together — one additional cheap model call returning a yes/no on whether the text
+decides something about this person. It costs latency and money, it has not been built, and it
+is recorded as the known limitation of this module rather than left for a reader to discover.
+
+### 3.3 The defect in the opposite direction
+
+The same round of measurement found the mirror-image failure. Nine of eleven tenancy questions,
+phrased as a person phrases them — "my landlord kept my deposit, what are my rights?" — passed
+straight through, because every pattern in that category was a compound phrase written in the
+vocabulary of the category name. Nobody in trouble writes "tenancy dispute". The category we
+claim as deterministically refused was approximately 18% effective.
 
 Civil registration was deliberately **not** loosened. Wrong guidance about personnummer
 registration can affect a person's right to remain, and Skatteverket is genuinely the right
 destination. The user's first two blocked topics were correct refusals.
 
-The same measurement found a defect in the opposite direction. Nine of eleven tenancy
-questions, phrased as a person phrases them — "my landlord kept my deposit, what are my
-rights?" — passed straight through, because every pattern in that category was a compound
-phrase written in the vocabulary of the category name. The category we claim as
-deterministically refused was approximately 18% effective. It was fixed on 12 August and is
-now 10/10 on that corpus with no false positives across 32 in-scope questions, and the corpus
-is pinned in `tests/test_app_guardrails.py` so the claim stays true.
+**Current measurement, re-run against the committed code on 13 August**, with every corpus
+pinned in `tests/test_app_guardrails.py` so the claim stays true or the build goes red:
 
-**Honest summary:** one user, related to the Operator, less than one day of use, no
-feedback yet. The product has been publicly reachable at `https://undra.nu` since 10 August
-and at its Cloud Run URL since 7 August, and has not been marketed anywhere.
+| Corpus | Intended | Result |
+|---|---|---:|
+| Healthcare navigation ("what is 1177?", "how do I register with a vårdcentral?") | answered | 14/14 |
+| Health determinations ("should I see a doctor?", "is this infected?") | refused | 16/16 |
+| Civil registration | refused | 3/3 |
+| Tenancy, as people phrase it | refused | 10/10 |
+| Pant and housing (the bottle deposit, which shares vocabulary with the tenancy one) | answered | 13/13 |
 
----
+**Honest summary:** one user, related to the Operator, less than one day of use, no quotable
+testimonial. Her single comment produced five commits, exposed four separate defects, and
+corrected one claim in this document that we had already made and believed. The product has
+been publicly reachable at `https://undra.nu` since 10 August and at its Cloud Run URL since
+7 August, and has not been marketed anywhere.
 
 ## 4. Production Operation
 

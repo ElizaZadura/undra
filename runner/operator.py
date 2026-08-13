@@ -122,11 +122,14 @@ def _blocks(kind: str) -> bool:
     PUBLISH does not stop anything — it parks one task. Calling everything
     blocking is how a triage view becomes another list nobody reads.
 
-    Three things genuinely stop progress: work Coral cannot perform at all, a
-    Jules session that writes no code until released, and a stall the loop has
-    already reported it cannot get out of.
+    Four things genuinely stop progress: work Coral cannot perform at all, a
+    Jules session that writes no code until released, a stall the loop has
+    already reported it cannot get out of, and the one kind whose timeout
+    default is `halt` rather than `abandon_task` — left unanswered, it stops
+    the whole loop, which is as blocking as anything gets.
     """
     return (kind in NEEDS_YOU_FIRST
+            or kind in NEVER_GRANT
             or kind == JULES_PLAN
             or kind == "STALLED_WORK_ESCALATION")
 
@@ -203,6 +206,62 @@ def pending(con: sqlite3.Connection, now: datetime | None = None) -> list[Item]:
         ))
 
     return sorted(items, key=lambda i: i.urgency)
+
+
+#: The first line of a push notification, by group. `bin/waiting` can afford a
+#: header, sections and an ordering; a Telegram message has one line before she
+#: decides whether to keep reading, so the group goes in it.
+_HEADLINE = {
+    "act-then-approve": "you have to do something first",
+    "approve-only": "waiting on your permission",
+    "report": "this is not an approval",
+    "never-grant": "do not approve this",
+    "jules-plan": "a Jules plan is held",
+}
+
+
+def notification(*, request_id: int, kind: str, payload: str,
+                 deadline: str | None, default_action: str) -> str:
+    """The Telegram message for one request.
+
+    Lives here, not in `runner/telegram.py`, because it is the same taxonomy
+    `bin/waiting` renders and there must not be two of it. Until 2026-08-13
+    there were effectively two: the pull view knew that `LOGIN` means *go and
+    sign in before you answer*, and the push message — the only one she sees
+    when she is not at the box — said `#3 LOGIN` and left the rest to memory.
+
+    Ordered the way a person reads on a phone: does this stop anything, what
+    is it, what do I do before answering, what do I type, what happens if I
+    say nothing.
+    """
+    group = classify(kind)
+    lead = "blocks progress" if _blocks(kind) else "when you have a moment"
+    out = [f"[undra · {lead}]", ""]
+
+    headline = _HEADLINE.get(group)
+    out.append(f"#{request_id}  {kind}" + (f" — {headline}" if headline else ""))
+    out += ["", payload.strip(), ""]
+
+    if group == "act-then-approve":
+        out += [f"first:  {NEEDS_YOU_FIRST[kind]}",
+                "Approving before you do it just moves the failure one step "
+                "along.", ""]
+    elif group == "report":
+        out += [f"note:  {NOT_AN_APPROVAL[kind]}", ""]
+    elif group == "never-grant":
+        out += ["CHARTER.md §4 says this should never fire. Find out what "
+                "produced it before answering.", ""]
+
+    # Deliberately not offered for never-grant: printing `approve 7` under a
+    # line telling her not to approve it is exactly the kind of message this
+    # rewrite exists to stop sending.
+    if group != "never-grant":
+        out.append(f"reply exactly:  approve {request_id}   "
+                   f"or   deny {request_id}")
+    out += [f"if no answer{f' by {deadline}' if deadline else ''}: "
+            f"{default_action}",
+            "(automated message from the undra agent system)"]
+    return "\n".join(out)
 
 
 def _age(h: float) -> str:

@@ -79,16 +79,18 @@ class Telegram:
                          deadline: str | None, default_action: str) -> None:
         """Every request states what is wanted, why, and what happens on silence
         (CHARTER.md §9). The reply format is fixed so parsing cannot misread a
-        conversational 'sure, go ahead' as approval of the wrong thing."""
-        self.send(
-            f"[undra · approval needed]\n\n"
-            f"#{request_id}  {kind}\n\n"
-            f"{payload}\n\n"
-            f"deadline: {deadline or 'none'}\n"
-            f"if no answer: {default_action}\n\n"
-            f"reply exactly:  approve {request_id}   or   deny {request_id}\n"
-            f"(automated message from the undra agent system)"
-        )
+        conversational 'sure, go ahead' as approval of the wrong thing.
+
+        The body is built by `runner/operator.py`, which holds the one thing
+        this message used to leave out: half the gated kinds exist because
+        Coral *cannot* act, not because it *may not*, and those need her to go
+        and do something before `approve` means anything. `bin/waiting` said so
+        from 12 August; this message did not, and this message is the one that
+        reaches her away from the box.
+        """
+        from .operator import notification
+        self.send(notification(request_id=request_id, kind=kind, payload=payload,
+                               deadline=deadline, default_action=default_action))
 
     def digest(self, body: str) -> None:
         self.send(f"[undra · daily digest]\n\n{body}\n\n"

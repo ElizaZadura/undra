@@ -435,6 +435,54 @@ class OperatorViewTest(unittest.TestCase):
         out = render([], jules_waiting=[], jules_error="no JULES_API_KEY")
         self.assertIn("could not be reached", out)
 
+    # -- the same taxonomy, pushed instead of pulled ----------------------- #
+    #
+    # bin/waiting is a pull tool on the box. Every one of these guarantees was
+    # true there from 12 August and false in the message that actually reaches
+    # her phone, which is the failure the module's own docstring describes.
+
+    def _push(self, kind, payload="something happened", rid=8):
+        from runner.operator import notification
+        return notification(request_id=rid, kind=kind, payload=payload,
+                            deadline="2026-08-13T20:13Z",
+                            default_action="carry on without it")
+
+    def test_the_push_message_says_what_to_do_first(self):
+        body = self._push("LOGIN")
+        self.assertIn("first:", body)
+        self.assertIn("2FA", body)
+        self.assertIn("moves the failure one step along", body)
+
+    def test_a_permission_only_kind_asks_for_nothing_first(self):
+        self.assertNotIn("first:", self._push("PUBLISH"))
+
+    def test_the_push_message_leads_with_whether_it_blocks(self):
+        self.assertTrue(self._push("LOGIN").startswith("[undra · blocks progress]"))
+        self.assertTrue(self._push("PUBLISH").startswith("[undra · when you have"))
+
+    def test_a_report_says_it_grants_nothing(self):
+        self.assertIn("grants nothing", self._push("STALLED_WORK_ESCALATION"))
+
+    def test_the_one_kind_she_must_not_grant_is_not_offered_a_command(self):
+        """Printing `approve 8` under a line saying do not approve this is the
+        exact shape of message this rewrite exists to stop sending."""
+        body = self._push("LEGAL_OR_MEDICAL_CLAIM")
+        self.assertNotIn("approve 8", body)
+        self.assertIn("do not approve", body)
+
+    def test_the_reply_format_is_still_exactly_two_words(self):
+        """The parser matches two or three tokens and nothing else. Whatever
+        else this message gained, it cannot have lost the literal command."""
+        self.assertIn("approve 8   or   deny 8", self._push("SPEND_OVER_LIMIT"))
+
+    def test_telegram_does_not_keep_its_own_copy_of_the_taxonomy(self):
+        """Two renderings of the same taxonomy is how they drift apart, which
+        is what happened between 12 and 13 August."""
+        body = (Path(__file__).resolve().parents[1]
+                / "runner" / "telegram.py").read_text()
+        self.assertIn("from .operator import notification", body)
+        self.assertNotIn("approval needed", body)
+
     @staticmethod
     def _db(rows):
         import sqlite3

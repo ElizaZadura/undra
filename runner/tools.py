@@ -293,19 +293,48 @@ def t_log_open_question(ctx: ToolContext, *, question: str,
     return {"question_id": qid}
 
 
-def t_mark_notes_read(ctx: ToolContext, *, note_ids: list) -> dict:
+def t_mark_notes_read(ctx: ToolContext, *, note_ids: list,
+                      response: str = "") -> dict:
     """Mark the Operator's notes seen, once you have acted on them or decided not to.
 
     Unread notes appear in every situation report. Leaving one unread means the
     next cycle — a different instance with no memory of you — reads it as new and
     acts on it again. Mark it read even when the answer is "no", and log a
     decision saying so.
+
+    `response` is sent to her. Say what you are doing about the note, in one
+    line, in her words rather than the ledger's.
+
+    On 2026-08-14 she sent "there is nothing that needs Jules right now, please
+    hold". Cycle 62 read it, complied, and filed nothing for five cycles — and
+    told her none of that. Meanwhile two requests filed *before* the note stayed
+    pending and aged into "overdue 18h", so `bin/waiting` reported her as being
+    ignored while the agent was doing exactly what she asked. She concluded that
+    free-form messages to Coral do not work. They had worked perfectly, first
+    time. Nothing had said so.
     """
     ids = [int(i) for i in (note_ids or [])]
     if not ids:
         raise ToolError("note_ids is required")
     ctx.ledger.mark_messages_read(ids, ctx.cycle.id)
-    return {"marked_read": ids}
+
+    # The receipt is best-effort. A Telegram outage must not fail the tool and
+    # leave the notes unread, because the next cycle would then act on them
+    # again — the exact failure the tool exists to prevent.
+    sent = False
+    if ctx.telegram:
+        which = ", ".join(f"#{i}" for i in ids)
+        body = (f"[undra · read your note]\n\n{which}\n\n"
+                f"{response.strip() or 'Read and marked. No action stated.'}\n\n"
+                f"(automated message from the undra agent system)")
+        try:
+            ctx.telegram.send(body)
+            sent = True
+        except Exception as exc:                      # noqa: BLE001
+            ctx.ledger.event("warn", "telegram",
+                             f"note receipt for {which} not delivered: {exc}")
+
+    return {"marked_read": ids, "receipt_sent": sent}
 
 
 def t_message_operator(ctx: ToolContext, *, body: str) -> dict:
@@ -1080,11 +1109,19 @@ def declarations() -> list[dict]:
           description=("Mark the Operator's notes as seen, once you have acted "
                        "on them or decided not to. Unread notes appear in every "
                        "situation report, so leaving one unread means the next "
-                       "cycle reads it as new and acts again."),
+                       "cycle reads it as new and acts again. `response` is sent "
+                       "to her: she has no other way to learn that a note "
+                       "arrived, was understood, or changed anything."),
           parameters={"type": "object", "properties": {
               "note_ids": {"type": "array", "items": {"type": "integer"},
                            "description": "The #ids shown in the report."},
-          }, "required": ["note_ids"]}),
+              "response": {"type": "string",
+                           "description": ("One line, to her, saying what you "
+                                           "are doing about it. 'Holding off on "
+                                           "Jules until there is a step for it.' "
+                                           "Not a status code and not a summary "
+                                           "of the note back at her.")},
+          }, "required": ["note_ids", "response"]}),
 
         S(name="message_operator",
           description=("Tell the Operator something. NOT a request and not "

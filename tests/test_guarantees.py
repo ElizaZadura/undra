@@ -1109,6 +1109,79 @@ class OffsiteTrailTest(unittest.TestCase):
         self.assertIn("git_unpushed_commits", src)
 
 
+class NoteReceiptTest(unittest.TestCase):
+    """The Operator has no way to learn that a note landed.
+
+    On 2026-08-14 she sent "there is nothing that needs Jules right now, please
+    hold". Cycle 62 read it, wrote "Held off filing any new Jules tasks" in a
+    handoff she does not read, and filed nothing for five cycles. It told her
+    none of that. Two requests filed *before* the note stayed pending and aged
+    into "overdue 18h", so the operator view reported her as ignored while the
+    agent was doing exactly what she asked. She concluded the channel did not
+    work. It had worked perfectly, first time.
+    """
+
+    @staticmethod
+    def _ctx(telegram):
+        from types import SimpleNamespace
+        marked = []
+        events = []
+        ledger = SimpleNamespace(
+            mark_messages_read=lambda ids, cid: marked.append((tuple(ids), cid)),
+            event=lambda *a: events.append(a))
+        ctx = SimpleNamespace(ledger=ledger, cycle=SimpleNamespace(id=62),
+                              telegram=telegram)
+        return ctx, marked, events
+
+    def test_marking_a_note_read_tells_her_so(self):
+        from runner.tools import t_mark_notes_read
+        from types import SimpleNamespace
+        sent = []
+        tg = SimpleNamespace(send=sent.append)
+        ctx, marked, _ = self._ctx(tg)
+
+        out = t_mark_notes_read(ctx, note_ids=[7],
+                                response="Holding off on Jules until there is a step for it.")
+
+        self.assertEqual(marked, [((7,), 62)])
+        self.assertTrue(out["receipt_sent"])
+        self.assertIn("#7", sent[0])
+        self.assertIn("Holding off on Jules", sent[0])
+
+    def test_a_telegram_failure_does_not_leave_the_note_unread(self):
+        """The receipt is the lesser guarantee. If sending fails and the tool
+        raises, the note stays unread, the next cycle sees it as new and acts on
+        it again — which is the failure mark_notes_read exists to prevent."""
+        from runner.tools import t_mark_notes_read
+        from types import SimpleNamespace
+
+        def boom(_):
+            raise RuntimeError("telegram down")
+
+        ctx, marked, events = self._ctx(SimpleNamespace(send=boom))
+        out = t_mark_notes_read(ctx, note_ids=[7, 9], response="Acting on it.")
+
+        self.assertEqual(marked, [((7, 9), 62)])       # marked anyway
+        self.assertFalse(out["receipt_sent"])
+        self.assertTrue(any("not delivered" in str(e) for e in events))
+
+    def test_it_works_without_a_telegram_at_all(self):
+        from runner.tools import t_mark_notes_read
+        ctx, marked, _ = self._ctx(None)
+        out = t_mark_notes_read(ctx, note_ids=[3], response="Noted.")
+        self.assertEqual(marked, [((3,), 62)])
+        self.assertFalse(out["receipt_sent"])
+
+    def test_the_agent_is_required_to_say_what_it_is_doing(self):
+        """A receipt that only says "read" restates the problem. The schema
+        makes the response mandatory; the Python default keeps a malformed call
+        from leaving notes unread."""
+        src = (Path(__file__).resolve().parents[1] / "runner" / "tools.py").read_text()
+        block = src[src.index('S(name="mark_notes_read"'):]
+        block = block[:block.index("S(name=", 10)]
+        self.assertIn('"required": ["note_ids", "response"]', block)
+
+
 class MobileViewportTest(unittest.TestCase):
     """The first defect a real user reported, 2026-08-13.
 

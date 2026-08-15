@@ -106,6 +106,29 @@ filed as a note to Coral, and request #7 stays pending. If you want to say why,
 send the reason as a second message; Coral reads notes at the start of its next
 cycle.
 
+**Free-form notes do work, and now say so.** Anything that is not an approval
+command becomes a note, appears in the next cycle's briefing, and is acted on.
+On 14 August "there is nothing that needs Jules right now, please hold" was read
+at the next cycle and obeyed for five cycles — and nothing told you. Since
+15 August, marking a note read sends you a line back saying what is being done
+about it:
+
+```
+[undra · read your note]
+
+#7
+
+Holding off on Jules until there is a step for it.
+```
+
+If a note produces no receipt within one cycle, it was not read. That is now a
+signal rather than a silence.
+
+**Requests filed before your note do not close themselves.** They keep ageing
+and `bin/waiting` keeps reporting them as overdue, which reads as being ignored
+when the opposite is happening. Check the timestamps against when you sent the
+note before concluding anything.
+
 Approval is only accepted from your chat id, checked before anything else is
 parsed. Coral has no tool that can approve anything, and three tests enforce
 that a gate it could open for itself is not a gate.

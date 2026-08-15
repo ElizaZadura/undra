@@ -14,9 +14,14 @@
 
 ### 1.1 The Problem: Navigating Swedish Systems Under Pre-Arrival Anxiety
 
-Each year Lund University admits a large intake of international students to southern
-Sweden. For many it is a first time living abroad, and they are immediately confronted with
-a set of complex, highly structured and unfamiliar local systems.
+Each year Lund University admits a substantial international intake to southern Sweden.
+The most recent published figure is **1,468 incoming exchange students in the 2022/23
+academic year, with 1,507 expected in 2023/24** ([Lund University staff pages, published
+2024-01-27](https://www.staff.lu.se/article/increase-both-incoming-and-outgoing-exchange-students)) —
+exchange students alone, excluding full-degree international students, so the population
+this product addresses is larger than that figure and we have not found a sourced number
+for the whole of it. For many it is a first time living abroad, and they are immediately
+confronted with a set of complex, highly structured and unfamiliar local systems.
 
 Students must navigate:
 
@@ -148,7 +153,7 @@ is traceable to an invoice or a billing console. Converted at the ECB reference 
 | Gemini API | Model calls, projects `undra-504613` and `undra-free` | **$3.18** | Google Cloud billing, 1 Jul – 10 Aug 2026 (kr 30.16), billed |
 | Cloud Run | Application hosting; Cloud Storage and Cloud Build both kr 0.00 | **$0.01** | Same billing report (kr 0.09), billed |
 | Domain registration | `undra.nu`, 2026-08-04 to 2027-08-04 | **$10.41** | Hostup AB invoice 202680231, kr 79.00 + kr 19.75 VAT = kr 98.75 |
-| Google AI Pro | One month; the agent's coding tool (Jules) | **$6.85** | kr 65.00, promotional rate. Operator-reported from the account billing page; no invoice document held |
+| Google AI Pro | One month; the agent's coding tool (Jules) | **$6.85** | kr 65.00 charged 2026-08-07, promotional rate. Google payments order history and the confirmation email, both retained as PDFs |
 | **Total** | | **$20.45** | |
 
 **Marketing and customer acquisition spend: $0.00.** No advertising, no paid placement, no
@@ -164,7 +169,7 @@ These are excluded from the $20.45 because that figure answers "what does this b
 cost to run", and a personal subscription bought before the business existed does not.
 
 **A note on the estimate in our own logs.** The ledger's internal estimate of total model
-spend is **$12.81** across 539 calls, computed from per-token rates transcribed from Google's
+spend is **$15.62** across 665 calls, computed from per-token rates transcribed from Google's
 pricing page and applied to metered token counts. That figure covers every call the agent
 made, on both API projects. Only one of those projects is billable: `undra-504613` carries the
 paid key, and `undra-free` carries a free-tier key whose calls cost nothing.
@@ -172,21 +177,21 @@ paid key, and `undra-free` carries a free-tier key whose calls cost nothing.
 **We cannot split that estimate between the two keys, and until 13 August this document
 claimed we could.** The ledger records the *role* a call was made in — `planning` or `ops` —
 not the key that served it. The two were meant to line up, but the runner falls back to the
-paid key when the free key stops serving mid-cycle, and 28 of 57 cycles logged doing exactly
-that; 60 of the 162 `ops` calls were made inside one. A dollar column headed "free" would
+paid key when the free key stops serving mid-cycle, and 36 of 67 cycles logged doing exactly
+that; 73 of the 212 `ops` calls were made inside one. A dollar column headed "free" would
 therefore have been a guess wearing the clothes of a reading, which is the specific failure
 this section was rewritten to remove in the first place. It has been taken out rather than
 restated more carefully, because there is no more careful version of a number the ledger
 does not hold.
 
-What the ledger does support, read at 2026-08-13T16:30Z:
+What the ledger does support, read at 2026-08-15T09:50Z:
 
 | Recorded as | Calls |
 |---|---:|
-| `planning` — paid key by design | 302 |
-| `ops` — free key by design, fell back to paid on 28 of 57 cycles | 162 |
+| `planning` — paid key by design | 378 |
+| `ops` — free key by design, fell back to paid on 36 of 67 cycles | 212 |
 | Recorded before the ledger tracked the role at all | 75 |
-| **Total** | **539** |
+| **Total** | **665** |
 
 The agent is still running, so the call counts are a reading rather than a final figure; they
 are regenerated from the ledger before submission. Google billed **$3.18** against the paid
@@ -422,13 +427,13 @@ answers this badly, because git records who *committed*, not who *wrote*.
 | Operator, genuinely her own typing | 3 |
 | Mechanical merges, credited to her | 2 |
 | Jules-written, credited to her | 2 |
-| Operator-directed, Claude Code-written (carry `Co-Authored-By`) | 59 |
+| Operator-directed, Claude Code-written (carry `Co-Authored-By`) | 83 |
 | Coral, autonomous | 12 |
-| **Total** | **78** |
+| **Total** | **102** |
 
-**73 of 78 commits were written by software.** Exactly three are the Operator's own typing:
+**97 of 102 commits were written by software.** Exactly three are the Operator's own typing:
 the repository initialisation, a one-line DNS file, and a plugin installation. The git author
-field credits her with 66 — roughly twenty-two times what she actually typed.
+field credits her with 90 — roughly thirty times what she actually typed.
 
 Two commits written by software carry no AI marker at all, because they landed under the
 Operator's access token: Jules's guardrail fix, and the earlier draft of this document.

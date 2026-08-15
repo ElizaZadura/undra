@@ -153,7 +153,7 @@ is traceable to an invoice or a billing console. Converted at the ECB reference 
 | Gemini API | Model calls, projects `undra-504613` and `undra-free` | **$3.18** | Google Cloud billing, 1 Jul – 10 Aug 2026 (kr 30.16), billed |
 | Cloud Run | Application hosting; Cloud Storage and Cloud Build both kr 0.00 | **$0.01** | Same billing report (kr 0.09), billed |
 | Domain registration | `undra.nu`, 2026-08-04 to 2027-08-04 | **$10.41** | Hostup AB invoice 202680231, kr 79.00 + kr 19.75 VAT = kr 98.75 |
-| Google AI Pro | One month; the agent's coding tool (Jules) | **$6.85** | kr 65.00, promotional rate. Operator-reported from the account billing page; no invoice document held |
+| Google AI Pro | One month; the agent's coding tool (Jules) | **$6.85** | kr 65.00 charged 2026-08-07, promotional rate. Google payments order history and the confirmation email, both retained as PDFs |
 | **Total** | | **$20.45** | |
 
 **Marketing and customer acquisition spend: $0.00.** No advertising, no paid placement, no

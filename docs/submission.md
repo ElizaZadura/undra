@@ -94,8 +94,11 @@ product a user talks to, not only in the operating layer described in §4.
   contains user prompts verbatim, and we exported two of our own — *"How does the pant
   machine work?"* — from a request Undra itself keeps nothing about. The retention is the
   platform's and predates our knowledge of it; the claim we can stand behind is about our
-  own systems, which is why it is now written that way. Recorded as a finding in our
-  developer-experience notes for the organisers.
+  own systems, which is why it is now written that way. Recorded, with two further findings
+  about that surface, in our [developer-experience field
+  notes](https://claude.ai/code/artifact/64b64876-97fc-4788-9825-9353aa302c37) — published to
+  the competition's own discussion page and to the Google Labs Discord, so the report went to
+  the platform as well as into this submission.
 
 ### 1.5 Refusal Guardrails: Deterministic "Refuse and Route"
 

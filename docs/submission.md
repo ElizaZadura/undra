@@ -14,9 +14,14 @@
 
 ### 1.1 The Problem: Navigating Swedish Systems Under Pre-Arrival Anxiety
 
-Each year Lund University admits a large intake of international students to southern
-Sweden. For many it is a first time living abroad, and they are immediately confronted with
-a set of complex, highly structured and unfamiliar local systems.
+Each year Lund University admits a substantial international intake to southern Sweden.
+The most recent published figure is **1,468 incoming exchange students in the 2022/23
+academic year, with 1,507 expected in 2023/24** ([Lund University staff pages, published
+2024-01-27](https://www.staff.lu.se/article/increase-both-incoming-and-outgoing-exchange-students)) —
+exchange students alone, excluding full-degree international students, so the population
+this product addresses is larger than that figure and we have not found a sourced number
+for the whole of it. For many it is a first time living abroad, and they are immediately
+confronted with a set of complex, highly structured and unfamiliar local systems.
 
 Students must navigate:
 

@@ -183,7 +183,7 @@ These are excluded from the $20.45 because that figure answers "what does this b
 cost to run", and a personal subscription bought before the business existed does not.
 
 **A note on the estimate in our own logs.** The ledger's internal estimate of total model
-spend is **$15.62** across 665 calls, computed from per-token rates transcribed from Google's
+spend is **$15.90** across 665 calls, computed from per-token rates transcribed from Google's
 pricing page and applied to metered token counts. That figure covers every call the agent
 made, on both API projects. Only one of those projects is billable: `undra-504613` carries the
 paid key, and `undra-free` carries a free-tier key whose calls cost nothing.

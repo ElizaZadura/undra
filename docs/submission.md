@@ -83,8 +83,19 @@ product a user talks to, not only in the operating layer described in §4.
   compliance determination, which is not ours to make.
 - **In-memory image handling**: uploaded images have EXIF and metadata stripped in memory on
   receipt and are held only as ephemeral buffers for the duration of the API call. They are
-  never written to persistent disk or object storage. User question text is never logged and
-  never persisted.
+  never written to persistent disk or object storage. **Undra never logs or persists user
+  question text** — application logging records the size and format of an image and nothing
+  a user typed or named a file, because Cloud Run logs are durable storage and a filename
+  like `uppehallstillstand_anna.jpg` is personal data.
+
+  **The platform does retain it, and we would rather say so than let the sentence above be
+  read as an absolute.** On 15 August we found that Google AI Studio has gained a logs and
+  datasets view covering the API project that serves our users, holding 381 requests. It
+  contains user prompts verbatim, and we exported two of our own — *"How does the pant
+  machine work?"* — from a request Undra itself keeps nothing about. The retention is the
+  platform's and predates our knowledge of it; the claim we can stand behind is about our
+  own systems, which is why it is now written that way. Recorded as a finding in our
+  developer-experience notes for the organisers.
 
 ### 1.5 Refusal Guardrails: Deterministic "Refuse and Route"
 

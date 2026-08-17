@@ -34,4 +34,11 @@ ENV/
 # by hand. run-cycle.sh stages them with `git add -f` into a throwaway index.
 docs/*
 !docs/submission.md
+# Hand-written, not generated, and linked from README.md — so it belongs on main.
+# It was swept up by the blanket rule above and reached the repository only as a
+# side effect of `git add -f docs reports` in the cycle publisher, which put the
+# operator's own manual on the operations-log branch and left the README link
+# 404ing on main. It also meant the page describing the emergency stop could only
+# be updated by a cycle running, and the agent is stopped.
+!docs/operator-approvals.md
 reports/

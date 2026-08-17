@@ -221,16 +221,18 @@ work would have cost had none of it run on the free tier, and it is the number o
 ceiling is enforced against, deliberately, because a budget guard should err toward stopping
 early.
 
-**What has accrued since the invoice closed, since the P&L attachment carries it as a
-separate line.** The $20.45 above is a billed-basis figure, and the invoice stops at
-10 August while the agent kept running. On an accrual basis the loss is larger. Our own
-ledger estimates the usage from 11 August onward at an upper bound of $10.21 across 473
-calls — upper, because most of those calls ran on the free key and the ledger cannot
-separate them. Google's billing console, read on 17 August, puts the billable part of that
-usage far lower; the P&L attachment carries both readings side by side rather than
-reconciling them into one, because they measure different things — what our ledger can prove
-from its own rows, and what Google will actually charge for. This document quotes only the
-ledger's figure, because the console reading is not a row in it.
+**What has accrued since the invoice closed, and why it is not in the P&L.** The $20.45 above
+is what has actually been paid. The invoice stops at 10 August and the agent kept running, so
+more has been incurred since: our ledger estimates the usage from 11 August onward at an upper
+bound of $10.21 across 473 calls — upper, because most of those calls ran on the free key and
+the ledger cannot separate them. Google's billing console, read on 17 August, puts the
+billable part far lower.
+
+None of that appears in the P&L statement, because the competition's template requires the
+**cash basis** — expenses recorded when cash is paid out. Unbilled usage is not a cash
+outflow, so it is excluded there and disclosed here instead. This is the one place in this
+document where our convention of overstating costs is overridden by an instruction, and we
+would rather point at the gap than let a reader find it.
 
 ### 2.2 Revenue by Month (May – August 2026)
 

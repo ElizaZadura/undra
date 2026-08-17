@@ -1507,15 +1507,21 @@ class SubmissionTotalsTest(unittest.TestCase):
         self.assertEqual(self.rf.check_totals(self.doc), [])
 
     def test_a_count_that_does_not_add_up_is_reported(self):
-        """The regression itself, as it stood at 09:20 on 17 August."""
+        """The regression itself: drop one from a hand-maintained row.
+
+        Asserted as a relationship — one row short, off by one — and not as the
+        literal 108-against-109 that produced it. The commit count rises every
+        cycle, and a test pinned to the day's figure fails for the wrong reason
+        a few hours later. This suite already has three tests that had to be
+        loosened for matching a snapshot instead of a behaviour.
+        """
         broken = self.doc.replace(
             "| Jules-written, credited to her | 3 |",
             "| Jules-written, credited to her | 2 |")
         self.assertNotEqual(broken, self.doc, "the row was renamed; fix this test")
         found = self.rf.check_totals(broken)
         self.assertEqual(len(found), 1, found)
-        self.assertIn("sum to 108", found[0])
-        self.assertIn("says 109", found[0])
+        self.assertIn("off by 1", found[0])
 
     def test_it_checks_money_and_not_only_counts(self):
         """The expense table is fixed and refresh-figures does not own a cell in

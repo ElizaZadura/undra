@@ -200,7 +200,7 @@ this section was rewritten to remove in the first place. It has been taken out r
 restated more carefully, because there is no more careful version of a number the ledger
 does not hold.
 
-What the ledger does support, read at 2026-08-17T09:09Z:
+What the ledger does support, read at 2026-08-17T09:28Z:
 
 | Recorded as | Calls |
 |---|---:|
@@ -456,13 +456,13 @@ answers this badly, because git records who *committed*, not who *wrote*.
 | Operator, genuinely her own typing | 3 |
 | Mechanical merges, credited to her | 2 |
 | Jules-written, credited to her | 3 |
-| Operator-directed, Claude Code-written (carry `Co-Authored-By`) | 90 |
+| Operator-directed, Claude Code-written (carry `Co-Authored-By`) | 92 |
 | Coral, autonomous | 12 |
-| **Total** | **110** |
+| **Total** | **112** |
 
-**105 of 110 commits were written by software.** Exactly three are the Operator's own typing:
+**107 of 112 commits were written by software.** Exactly three are the Operator's own typing:
 the repository initialisation, a one-line DNS file, and a plugin installation. The git author
-field credits her with 98 — roughly thirty-three times what she actually typed.
+field credits her with 100 — roughly thirty-three times what she actually typed.
 
 **These counts are read as of the commit immediately before the one that carries them**, since
 a document cannot count the commit that records it. So the repository is always one commit

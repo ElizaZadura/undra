@@ -1,0 +1,101 @@
+#!/usr/bin/env python3
+"""Set the halt flag now, without waiting for a cycle. The Operator's tool.
+
+`/halt` from the phone is the route that matters, because it works from
+anywhere. Its cost is latency: the flag is read before every action, but it can
+only be *set* by `Telegram.poll()`, which runs at cycle start. On 2026-08-17 the
+Operator sent `/halt` at 09:18 UTC with the last poll at 08:12 and the next due
+at 12:11, checked the flag, found it `false`, and concluded — reasonably — that
+the command had failed.
+
+This is the route with no delay, for when she is already at a terminal. Both
+routes are kept: the phone one has reach, this one has immediacy, and neither
+replaces the other.
+
+    bin/halt --reason "stopping before the deadline so figures stop moving"
+    bin/halt --status
+
+Setting the flag stops the agent taking new actions. It does **not** stop the
+systemd timer, so a cycle still starts every four hours, reads the flag, records
+itself as `halted` and exits without a model call. That is intended: a halted
+cycle leaves a row, which is how the halt stays visible in the ledger. If you
+want no rows at all, stop the timer instead.
+
+Not reachable by Coral, by design — see `bin/unhalt`.
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+import tomllib
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from runner.ledger import Ledger  # noqa: E402
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def _ledger() -> Ledger:
+    """Open the ledger named by invariants.toml, falling back to ./ledger.db.
+
+    `removeprefix`, not `lstrip("./")`: lstrip takes a *character set*, so it
+    would eat any leading run of dots and slashes and mangle a path that begins
+    with one. That exact confusion is a recorded defect in this project — it is
+    why the guard protecting `.claude/settings.json` once silently ignored it.
+    """
+    db = "./ledger.db"
+    try:
+        with open(ROOT / "invariants.toml", "rb") as fh:
+            db = (tomllib.load(fh).get("scope") or {}).get("ledger_path", db)
+    except OSError:
+        pass
+    return Ledger(str(ROOT / db.removeprefix("./")))
+
+
+def main(argv: list[str]) -> int:
+    p = argparse.ArgumentParser(
+        description="Set the halt flag immediately.",
+        epilog="Lift it with bin/unhalt --reason '...'")
+    p.add_argument("--reason", help="Why. Recorded on the row and in an event.")
+    p.add_argument("--status", action="store_true",
+                   help="Report the flag and change nothing.")
+    args = p.parse_args(argv)
+
+    led = _ledger()
+    row = led.con.execute(
+        "SELECT value, updated_at, reason FROM flags WHERE key='halt'").fetchone()
+
+    if args.status:
+        if row:
+            print(f"halt = {row['value']}   set {row['updated_at']}\n"
+                  f"reason: {row['reason']}")
+        else:
+            print("halt = (no row)   the flag has never been set")
+        return 0
+
+    if row and str(row["value"]).lower() == "true":
+        print(f"Already halted since {row['updated_at']}.\n"
+              f"reason: {row['reason']}\n\nLeaving it alone.")
+        return 0
+
+    reason = args.reason or "set from the box with bin/halt"
+    led.con.execute(
+        "INSERT INTO flags(key, value, updated_at, reason) "
+        "VALUES('halt','true',datetime('now'),?) "
+        "ON CONFLICT(key) DO UPDATE SET value='true', "
+        "updated_at=excluded.updated_at, reason=excluded.reason", (reason,))
+    led.con.commit()
+    led.event("warn", "operator", f"halt flag set by the Operator: {reason}")
+
+    print(f"halt = true   set now, and recorded as an event.\nreason: {reason}\n")
+    print("No new actions will run and no model calls will be made. Cycles will "
+          "still start on the timer and record themselves as halted.\n"
+          "Lift it with: ./bin/unhalt --reason '...'")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

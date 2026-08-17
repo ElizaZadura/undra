@@ -213,10 +213,33 @@ def check_totals(text: str) -> list[str]:
     return problems
 
 
+#: A filed document stops being a moving target and becomes a record of what was
+#: sent. Written into the file rather than held here, so the fact travels with
+#: the document instead of living in the tool that edits it.
+FILED = "<!-- audit:filed"
+
+
 def main(argv: list[str]) -> int:
     check_only = "--check" in argv
+    force = "--force" in argv
     f = figures()
     before = DOC.read_text()
+
+    if FILED in before and not (check_only or force):
+        # The submission was filed on 2026-08-17. Every commit after that moves
+        # the commit counts, and releasing the agent moves everything else — so
+        # this script would happily rewrite the document away from what was
+        # actually submitted, in the name of keeping it current. Being current is
+        # not the job any more.
+        line = next(l for l in before.splitlines() if FILED in l)
+        print(f"{DOC.name} is marked as filed: {line.strip()}\n\n"
+              f"Refusing to rewrite it. The figures in a filed document are the "
+              f"figures that were submitted, and making them current would make "
+              f"the repository disagree with the submission.\n"
+              f"  --check   report the drift without writing\n"
+              f"  --force   rewrite anyway, breaking that correspondence",
+              file=sys.stderr)
+        return 5
     after = before
     missed = []
 

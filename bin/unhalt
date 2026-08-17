@@ -1,0 +1,109 @@
+#!/usr/bin/env python3
+"""Clear the halt flag. The Operator's tool, and only hers.
+
+Why this exists: nothing could clear it. CHARTER.md §10 says the Operator may
+set the flag from her phone at any time without explanation, and forbids the
+agent from clearing it or even investigating why it was set. Both halves were
+implemented. The half nobody wrote was the Operator's way back.
+
+The flag was last cleared on 2026-08-06 by hand-editing `ledger.db` with the
+sqlite CLI, and the row still carries the reason typed that day. Hand-editing the
+audit trail to restart the system is a bad shape: it is unrecorded, it is easy to
+get wrong at 2am, and it makes the one recovery path the least traceable action
+in the project.
+
+    bin/unhalt --reason "submission filed, resuming normal cycles"
+    bin/unhalt --status
+
+**This is deliberately not a tool Coral can reach.** It lives in `bin/`, like
+`bin/record-cost`, and is absent from `runner/tools.py`. A halt the agent can
+lift is not a halt, and `test_no_agent_tool_can_clear_the_halt_flag` fails if it
+ever appears in the tool surface.
+
+Note that clearing the flag is not the whole of resuming. If the cycle timer was
+stopped rather than halted, start it too — and if a `/halt` is still sitting
+unread in Telegram, the next cycle will consume it and halt again, which is
+correct behaviour and surprising the first time it happens.
+"""
+
+from __future__ import annotations
+
+import argparse
+import sys
+import tomllib
+from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
+
+from runner.ledger import Ledger  # noqa: E402
+
+ROOT = Path(__file__).resolve().parent.parent
+
+
+def _ledger() -> Ledger:
+    """Open the ledger named by invariants.toml, falling back to ./ledger.db.
+
+    `removeprefix`, not `lstrip("./")`: lstrip takes a *character set*, so it
+    would eat any leading run of dots and slashes and mangle a path that begins
+    with one. That exact confusion is a recorded defect in this project — it is
+    why the guard protecting `.claude/settings.json` once silently ignored it.
+    """
+    db = "./ledger.db"
+    try:
+        with open(ROOT / "invariants.toml", "rb") as fh:
+            db = (tomllib.load(fh).get("scope") or {}).get("ledger_path", db)
+    except OSError:
+        pass
+    return Ledger(str(ROOT / db.removeprefix("./")))
+
+
+def main(argv: list[str]) -> int:
+    p = argparse.ArgumentParser(
+        description="Clear the halt flag so cycles can run again.",
+        epilog="Setting it is one message from your phone; clearing it is this.")
+    p.add_argument("--reason", help="Why you are lifting it. Recorded on the row.")
+    p.add_argument("--status", action="store_true",
+                   help="Report the flag and change nothing.")
+    args = p.parse_args(argv)
+
+    led = _ledger()
+    row = led.con.execute(
+        "SELECT value, updated_at, reason FROM flags WHERE key='halt'").fetchone()
+    halted = bool(row) and str(row["value"]).lower() == "true"
+
+    if row:
+        print(f"halt = {row['value']}   set {row['updated_at']}\n"
+              f"reason: {row['reason']}")
+    else:
+        print("halt = (no row)   the flag has never been set")
+
+    if args.status:
+        return 0
+
+    if not halted:
+        print("\nNothing to clear. Cycles are not blocked by the halt flag.\n"
+              "If the loop is not running, check the timer: "
+              "systemctl status undra-cycle.timer")
+        return 0
+
+    if not args.reason:
+        print("\nRefusing to clear it without --reason. The row you are "
+              "overwriting says why the agent was stopped, and replacing that "
+              "with nothing loses the only record of it.", file=sys.stderr)
+        return 2
+
+    led.con.execute(
+        "UPDATE flags SET value='false', updated_at=datetime('now'), reason=? "
+        "WHERE key='halt'", (f"cleared by the Operator: {args.reason}",))
+    led.con.commit()
+    led.event("warn", "operator", f"halt flag cleared by the Operator: {args.reason}")
+
+    print(f"\nhalt = false   cleared, and recorded as an event.\n"
+          f"reason: cleared by the Operator: {args.reason}")
+    print("\nCycles will run at the next timer fire. If the timer was stopped, "
+          "start it as well — clearing the flag does not start it.")
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))

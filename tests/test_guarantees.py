@@ -18,6 +18,7 @@ import re
 import sqlite3
 import sys
 import tempfile
+import time
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
@@ -1477,6 +1478,118 @@ class ChatRenderingTest(unittest.TestCase):
         self.assertIn("${renderRich(text)}", js[start:])
 
 
+class HaltAcknowledgementTest(unittest.TestCase):
+    """`/halt` must answer, and must stop the agent even if it cannot answer.
+
+    Found 2026-08-17, hours after filing. The halt flag is *read* before every
+    action exactly as CHARTER.md §10 promises, but the Operator can only *set* it
+    through `Telegram.poll()`, which runs at cycle start. She sent `/halt` at
+    09:18 UTC; the last poll had been 08:12 and the next was due 12:11. She
+    checked the flag, saw `false`, and concluded the command had failed. She sent
+    it twice more. All three were queued and correct, and nothing acknowledged
+    any of them.
+
+    It is the same failure fixed for the note channel on 2026-08-15 — silence
+    read as being ignored — left in place on the one channel where being unsure
+    is worst. The emergency stop is the last thing that should make you guess.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        path = str(Path(self.tmp.name) / "ledger.db")
+        con = sqlite3.connect(path)
+        con.executescript(_schema())
+        con.commit()
+        con.close()
+        self.led = Ledger(path)
+        self.addCleanup(self.tmp.cleanup)
+        self.addCleanup(self.led.close)
+
+    class _Tg:
+        """Stands in for Telegram. `chat_id` is what process_updates checks."""
+        chat_id = "42"
+
+        def __init__(self, fail=False):
+            self.sent, self.fail = [], fail
+
+        def send(self, text):
+            if self.fail:
+                raise RuntimeError("network is down")
+            self.sent.append(text)
+
+    def _update(self, text="/halt", sent_at=None):
+        from runner.telegram import Update
+        return Update(update_id=1, text=text, chat_id="42", sent_at=sent_at)
+
+    def test_halt_is_acknowledged(self):
+        from runner.telegram import process_updates
+        tg = self._Tg()
+        process_updates(tg, self.led, [self._update()])
+        self.assertTrue(self.led.is_halted(), "halt flag was not set")
+        self.assertEqual(len(tg.sent), 1, "the Operator got no acknowledgement")
+        self.assertIn("halt flag is set", tg.sent[0])
+
+    def test_the_receipt_says_how_long_the_command_waited(self):
+        """An acknowledgement that hides the latency still leaves her guessing
+        how long the agent kept working after she told it to stop."""
+        from runner.telegram import process_updates
+        tg = self._Tg()
+        three_hours_ago = int(time.time()) - 3 * 3600 - 120
+        process_updates(tg, self.led, [self._update(sent_at=three_hours_ago)])
+        self.assertIn("3h 2m ago", tg.sent[0])
+
+    def test_a_fresh_command_does_not_claim_to_be_late(self):
+        from runner.telegram import process_updates
+        tg = self._Tg()
+        process_updates(tg, self.led, [self._update(sent_at=int(time.time()))])
+        self.assertNotIn("ago", tg.sent[0])
+
+    def test_halt_still_applies_when_the_receipt_cannot_be_sent(self):
+        """The ordering is the guarantee. A Telegram outage must never leave the
+        agent running because it could not confirm that it had stopped."""
+        from runner.telegram import process_updates
+        tg = self._Tg(fail=True)
+        process_updates(tg, self.led, [self._update()])
+        self.assertTrue(self.led.is_halted(),
+                        "a failed receipt prevented the halt from applying")
+        n = self.led.con.execute(
+            "SELECT COUNT(*) FROM events WHERE level='warn' "
+            "AND source='telegram' AND message LIKE '%receipt not delivered%'"
+        ).fetchone()[0]
+        self.assertEqual(n, 1, "the undelivered receipt was not recorded")
+
+    def test_no_agent_tool_can_clear_the_halt_flag(self):
+        """CHARTER.md §10 forbids the agent clearing it or investigating why it
+        was set. A halt the agent can lift is not a halt, so the Operator's way
+        back lives in bin/ — like bin/record-cost — and not in the tool surface."""
+        from runner import tools
+        names = set(tools.TOOL_IMPLS) | {d["name"] for d in tools.declarations()}
+        for n in names:
+            self.assertNotIn("halt", n.lower(),
+                             f"{n} is exposed to the agent and names halt")
+        # Matched against SQL touching the table, not the bare word: tools.py
+        # legitimately contains `flags=re.S | re.I` as a regex keyword argument,
+        # and a test that trips over that is a test about spelling.
+        src = (Path(__file__).resolve().parents[1] / "runner" / "tools.py").read_text().lower()
+        for sql in ("into flags", "update flags", "from flags", "delete from flags"):
+            self.assertNotIn(sql, src,
+                             f"runner/tools.py runs `{sql}` — the agent can reach the flag")
+
+    def test_the_operator_has_a_documented_way_back(self):
+        """The flag was last cleared by hand-editing ledger.db with the sqlite
+        CLI. Hand-editing the audit trail to restart the system makes the one
+        recovery path the least traceable action in the project."""
+        root = Path(__file__).resolve().parents[1]
+        for name in ("halt", "unhalt"):
+            tool = root / "bin" / name
+            self.assertTrue(tool.exists(), f"bin/{name} is missing")
+            self.assertTrue(tool.stat().st_mode & 0o111, f"bin/{name} is not executable")
+        # Clearing it without a reason overwrites the only record of why the
+        # agent was stopped, so it is refused.
+        self.assertIn("Refusing to clear it without --reason",
+                      (root / "bin" / "unhalt").read_text())
+
+
 class SubmissionTotalsTest(unittest.TestCase):
     """A total in docs/submission.md must equal the rows above it.
 
@@ -1532,6 +1645,19 @@ class SubmissionTotalsTest(unittest.TestCase):
         found = self.rf.check_totals(broken)
         self.assertEqual(len(found), 1, found)
         self.assertIn("off by 0.54", found[0])
+
+    def test_a_filed_document_is_not_rewritten(self):
+        """The submission was filed 2026-08-17. Every commit after that moves the
+        commit counts, so this script would keep rewriting a filed document to
+        make it current — and current is no longer the job. Verified against the
+        source rather than by running it, because running it edits the file."""
+        src = (Path(__file__).resolve().parents[1] / "bin" / "refresh-figures").read_text()
+        self.assertIn("audit:filed", src, "the filed marker is not honoured")
+        body = src[src.index("def main("):]
+        self.assertLess(body.index("FILED in before"), body.index("DOC.write_text"),
+                        "refresh-figures writes before it checks for the filed marker")
+        self.assertIn("audit:filed", self.doc,
+                      "docs/submission.md has lost its filed marker")
 
     def test_the_check_runs_before_anything_is_written(self):
         """A guard that reports after the write has already lost. Verified

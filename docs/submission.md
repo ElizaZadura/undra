@@ -8,6 +8,15 @@
 > and its cause are described in §5.3, because it is the most instructive thing this project
 > produced.
 
+<!-- audit:filed 2026-08-17 -->
+> **Filed 17 August 2026. The figures below are the figures as submitted, and are
+> deliberately not maintained past that point.** `bin/refresh-figures` reads the live ledger
+> and `git log`, so it will report drift against this file for ever — every commit made after
+> filing moves the commit counts, and the agent may be released again. Refreshing it would
+> make the repository disagree with the document that was actually submitted, which is worse
+> than a stale number. The script refuses to rewrite a file carrying the marker above; use
+> `--force` only if you intend to break that correspondence on purpose.
+
 ---
 
 ## 1. Project Narrative

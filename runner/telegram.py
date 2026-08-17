@@ -14,6 +14,7 @@ from __future__ import annotations
 
 import json
 import os
+import time
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -33,6 +34,13 @@ class Update:
     update_id: int
     text: str
     chat_id: str
+    #: Unix seconds from Telegram's own `message.date`, when it supplied one.
+    #: Carried solely so the halt receipt can say how long the message waited.
+    #: On 2026-08-17 three `/halt` messages sat unread for up to three hours
+    #: because polling happens at cycle start, and nothing told the Operator
+    #: that. A receipt that says "set" without saying "late" would have left her
+    #: with the same wrong conclusion she reached without one.
+    sent_at: int | None = None
 
 
 class Telegram:
@@ -107,12 +115,56 @@ class Telegram:
         out = []
         for u in self._call("getUpdates", params):
             msg = u.get("message") or u.get("edited_message") or {}
+            date = msg.get("date")
             out.append(Update(
                 update_id=int(u["update_id"]),
                 text=(msg.get("text") or "").strip(),
                 chat_id=str((msg.get("chat") or {}).get("id", "")),
+                sent_at=int(date) if isinstance(date, (int, float)) else None,
             ))
         return out
+
+
+def _waited(sent_at: int | None) -> str:
+    """How long a command sat unread, in words, or "" if it cannot be known."""
+    if not sent_at:
+        return ""
+    secs = int(time.time()) - int(sent_at)
+    if secs < 90:
+        return ""
+    if secs < 3600:
+        return f"{secs // 60}m"
+    return f"{secs // 3600}h {(secs % 3600) // 60}m"
+
+
+def halt_receipt(sent_at: int | None = None) -> str:
+    """What the Operator gets back when her `/halt` lands.
+
+    Why this exists. The halt flag is *read* before every action, exactly as
+    CHARTER.md §10 promises. But the Operator's ability to *set* it goes through
+    `poll()`, which runs at cycle start — so on 2026-08-17 she sent `/halt` at
+    09:18 UTC, the last poll had been at 08:12, and the next was not due until
+    12:11. She checked the flag, found it `false`, and reasonably concluded the
+    command had not worked. She sent it twice more. All three were queued and
+    correct; nothing acknowledged any of them.
+
+    That is the same failure fixed for the *note* channel on 2026-08-15, by
+    making `mark_notes_read` send a line back. It was never applied to the one
+    channel where being unsure is worst. This is that fix, and it names the
+    delay rather than papering over it: an acknowledgement that hides the
+    latency would still leave her guessing how long the agent kept working.
+    """
+    waited = _waited(sent_at)
+    late = (f"You sent it {waited} ago. Halt is applied when a cycle starts, "
+            f"not when you send it, so there is a delay of up to one cycle — "
+            f"and it has now been applied.\n\n") if waited else ""
+    return ("[undra · halt]\n\n"
+            "The halt flag is set. No new actions will run and no model calls "
+            "will be made.\n\n"
+            f"{late}"
+            "Nothing further is needed from you. To resume, run ./bin/unhalt on "
+            "the box — the agent cannot clear this itself, and must not.\n\n"
+            "(automated message from the undra agent system)")
 
 
 OFFSET_FLAG = "telegram_offset"
@@ -221,7 +273,20 @@ def process_updates(tg: Telegram, ledger, updates: list[Update]) -> int | None:
                 "ON CONFLICT(key) DO UPDATE SET value='true', "
                 "updated_at=excluded.updated_at, reason=excluded.reason")
             ledger.con.commit()
-            ledger.event("warn", "telegram", "halt flag set by Operator via /halt")
+            waited = _waited(u.sent_at)
+            ledger.event("warn", "telegram",
+                         "halt flag set by Operator via /halt"
+                         + (f"; the command waited {waited}" if waited else ""))
+
+            # The receipt is best-effort, and the order here is the whole point:
+            # the flag is set and committed BEFORE anything is sent. A Telegram
+            # outage must never be able to leave the agent running because it
+            # could not confirm that it had stopped.
+            try:
+                tg.send(halt_receipt(u.sent_at))
+            except Exception as exc:                      # noqa: BLE001
+                ledger.event("warn", "telegram",
+                             f"halt receipt not delivered: {exc}")
             continue
 
         parts = text.split()

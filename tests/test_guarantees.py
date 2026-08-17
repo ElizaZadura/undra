@@ -1477,5 +1477,66 @@ class ChatRenderingTest(unittest.TestCase):
         self.assertIn("${renderRich(text)}", js[start:])
 
 
+class SubmissionTotalsTest(unittest.TestCase):
+    """A total in docs/submission.md must equal the rows above it.
+
+    Found 2026-08-17, hours before filing. `bin/refresh-figures` rewrote §5's
+    commit table to a total of 109 and its `Co-Authored-By` row to 89, both read
+    correctly from `git log`. The rows still summed to 108, because a Jules
+    commit had landed as a GitHub squash merge, which keeps the pull request
+    title and discards the trailer — so it belonged to the one row in that table
+    a person maintains by hand.
+
+    Every existing guard was watching for a *stale* figure. This was two current
+    figures that could not both be true, and nothing was comparing them to each
+    other. The document's whole claim is that its numbers are traceable, and a
+    total that does not equal its parts refutes that in one line.
+    """
+
+    def setUp(self):
+        import importlib.machinery
+        import importlib.util
+        loader = importlib.machinery.SourceFileLoader(
+            "refresh_figures", str(Path(__file__).resolve().parents[1] / "bin" / "refresh-figures"))
+        spec = importlib.util.spec_from_loader("refresh_figures", loader)
+        self.rf = importlib.util.module_from_spec(spec)
+        loader.exec_module(self.rf)
+        self.doc = (Path(__file__).resolve().parents[1] / "docs" / "submission.md").read_text()
+
+    def test_the_document_as_committed_adds_up(self):
+        self.assertEqual(self.rf.check_totals(self.doc), [])
+
+    def test_a_count_that_does_not_add_up_is_reported(self):
+        """The regression itself, as it stood at 09:20 on 17 August."""
+        broken = self.doc.replace(
+            "| Jules-written, credited to her | 3 |",
+            "| Jules-written, credited to her | 2 |")
+        self.assertNotEqual(broken, self.doc, "the row was renamed; fix this test")
+        found = self.rf.check_totals(broken)
+        self.assertEqual(len(found), 1, found)
+        self.assertIn("sum to 108", found[0])
+        self.assertIn("says 109", found[0])
+
+    def test_it_checks_money_and_not_only_counts(self):
+        """The expense table is fixed and refresh-figures does not own a cell in
+        it. Arithmetic does not care which numbers a script maintains."""
+        broken = self.doc.replace("| **Total** | | **$20.45** | |",
+                                  "| **Total** | | **$20.99** | |")
+        self.assertNotEqual(broken, self.doc, "the total row moved; fix this test")
+        found = self.rf.check_totals(broken)
+        self.assertEqual(len(found), 1, found)
+        self.assertIn("off by 0.54", found[0])
+
+    def test_the_check_runs_before_anything_is_written(self):
+        """A guard that reports after the write has already lost. Verified
+        against the source order rather than by running it, because running it
+        rewrites the submission."""
+        src = (Path(__file__).resolve().parents[1] / "bin" / "refresh-figures").read_text()
+        body = src[src.index("def main("):]
+        self.assertLess(body.index("check_totals(after)"),
+                        body.index("DOC.write_text"),
+                        "refresh-figures writes before it checks the totals")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

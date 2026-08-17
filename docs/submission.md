@@ -184,7 +184,7 @@ cost to run", and a personal subscription bought before the business existed doe
 
 <!-- audit:disclosed -->
 **A note on the estimate in our own logs.** The ledger's internal estimate of total model
-spend is **$16.71** across 665 calls, computed from per-token rates transcribed from Google's
+spend is **$17.85** across 781 calls, computed from per-token rates transcribed from Google's
 pricing page and applied to metered token counts. That figure covers every call the agent
 made, on both API projects. Only one of those projects is billable: `undra-504613` carries the
 paid key, and `undra-free` carries a free-tier key whose calls cost nothing.
@@ -193,21 +193,21 @@ paid key, and `undra-free` carries a free-tier key whose calls cost nothing.
 **We cannot split that estimate between the two keys, and until 13 August this document
 claimed we could.** The ledger records the *role* a call was made in — `planning` or `ops` —
 not the key that served it. The two were meant to line up, but the runner falls back to the
-paid key when the free key stops serving mid-cycle, and 36 of 67 cycles logged doing exactly
-that; 73 of the 212 `ops` calls were made inside one. A dollar column headed "free" would
+paid key when the free key stops serving mid-cycle, and 45 of 79 cycles logged doing exactly
+that; 91 of the 257 `ops` calls were made inside one. A dollar column headed "free" would
 therefore have been a guess wearing the clothes of a reading, which is the specific failure
 this section was rewritten to remove in the first place. It has been taken out rather than
 restated more carefully, because there is no more careful version of a number the ledger
 does not hold.
 
-What the ledger does support, read at 2026-08-15T09:50Z:
+What the ledger does support, read at 2026-08-17T08:57Z:
 
 | Recorded as | Calls |
 |---|---:|
-| `planning` — paid key by design | 378 |
-| `ops` — free key by design, fell back to paid on 36 of 67 cycles | 212 |
+| `planning` — paid key by design | 449 |
+| `ops` — free key by design, fell back to paid on 45 of 79 cycles | 257 |
 | Recorded before the ledger tracked the role at all | 75 |
-| **Total** | **665** |
+| **Total** | **781** |
 
 The agent is still running, so the call counts are a reading rather than a final figure; they
 are regenerated from the ledger before submission. Google billed **$3.18** against the paid
@@ -442,17 +442,21 @@ answers this badly, because git records who *committed*, not who *wrote*.
 |---|---:|
 | Operator, genuinely her own typing | 3 |
 | Mechanical merges, credited to her | 2 |
-| Jules-written, credited to her | 2 |
-| Operator-directed, Claude Code-written (carry `Co-Authored-By`) | 83 |
+| Jules-written, credited to her | 3 |
+| Operator-directed, Claude Code-written (carry `Co-Authored-By`) | 89 |
 | Coral, autonomous | 12 |
-| **Total** | **102** |
+| **Total** | **109** |
 
-**97 of 102 commits were written by software.** Exactly three are the Operator's own typing:
+**104 of 109 commits were written by software.** Exactly three are the Operator's own typing:
 the repository initialisation, a one-line DNS file, and a plugin installation. The git author
-field credits her with 90 — roughly thirty times what she actually typed.
+field credits her with 97 — roughly thirty-two times what she actually typed.
 
-Two commits written by software carry no AI marker at all, because they landed under the
-Operator's access token: Jules's guardrail fix, and the earlier draft of this document.
+Three commits written by software carry no AI marker at all, because they landed under the
+Operator's access token as squash merges: Jules's guardrail fix, the earlier draft of this
+document, and a 16 August edit to this section's own money figures. A squash merge keeps the
+pull request title and discards the trailer, so the only record of who wrote them is the
+commit body — which is why the row above is maintained by hand while the rest are read from
+`git log`.
 
 **Every count above begins after the human-only phase ended.** Work started on 3 August; the
 first commit is 5 August and the first ledger row 6 August. The design decisions that

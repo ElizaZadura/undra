@@ -33,6 +33,7 @@ import sqlite3
 import subprocess
 import sys
 from datetime import datetime, timezone
+from decimal import Decimal
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -150,6 +151,68 @@ RULES = [
 ]
 
 
+#: A cell holding one figure: optionally bolded, optionally a dollar amount.
+_FIGURE = re.compile(r"^\*{0,2}\$?([\d,]+(?:\.\d+)?)\*{0,2}$")
+
+
+def _cells(line: str) -> list[str]:
+    return [c.strip() for c in line.strip().strip("|").split("|")]
+
+
+def check_totals(text: str) -> list[str]:
+    """Report every `**Total**` row that disagrees with the rows above it.
+
+    The rules above rewrite individual cells. Nothing made them agree with each
+    other, and on 17 August they did not: §5's table was rewritten to a total of
+    109 commits while its rows still summed to 108, because a Jules commit had
+    landed as a squash merge — GitHub keeps the pull request title and discards
+    the `Co-Authored-By` trailer, so it belonged to a row that is maintained by
+    hand and not by `git log`.
+
+    A total that does not equal its parts is the exact failure this script was
+    written to prevent, arriving by the one route it was not watching: not a
+    stale figure, but two current figures that cannot both be true. Cheap to
+    check, so check it — and check the fixed tables too, since arithmetic does
+    not care which numbers a script owns.
+    """
+    lines = text.splitlines()
+    problems = []
+
+    for i, line in enumerate(lines):
+        cells = _cells(line)
+        if not cells or not cells[0].startswith("**Total**"):
+            continue
+        # Which column carries the figure. Skip column 0, which holds the label.
+        col = next((j for j, c in enumerate(cells)
+                    if j and _FIGURE.match(c)), None)
+        if col is None:
+            continue
+        want = Decimal(_FIGURE.match(cells[col])[1].replace(",", ""))
+
+        got, rows = Decimal(0), 0
+        for k in range(i - 1, -1, -1):
+            prev = lines[k].strip()
+            if not prev.startswith("|"):
+                break
+            pc = _cells(prev)
+            # A shape change or the `|---|---:|` separator ends the table; so
+            # does any non-numeric cell, which is what a header row looks like.
+            if len(pc) != len(cells):
+                break
+            m = _FIGURE.match(pc[col])
+            if not m:
+                break
+            got += Decimal(m[1].replace(",", ""))
+            rows += 1
+
+        if rows and got != want:
+            problems.append(
+                f"line {i + 1}: the {rows} rows above sum to {got}, "
+                f"but the total says {want} — off by {want - got}")
+
+    return problems
+
+
 def main(argv: list[str]) -> int:
     check_only = "--check" in argv
     f = figures()
@@ -176,12 +239,43 @@ def main(argv: list[str]) -> int:
               "prose in docs/submission.md.", file=sys.stderr)
         return 2
 
-    if after == before:
+    if broken := check_totals(after):
+        # Before writing, and regardless of --check. Half of a contradiction is
+        # a figure this script maintains; the other half is a figure a person
+        # maintains, and only the person can say which one is wrong.
+        print("A total does not equal the rows above it:", file=sys.stderr)
+        for b in broken:
+            print(f"  {b}", file=sys.stderr)
+        print("\nNothing written. One of those numbers is maintained by hand — "
+              "read the table and fix that row, not the total.", file=sys.stderr)
+        return 3
+
+    # What actually moved, line by line. One of the rules rewrites the "read at"
+    # timestamp, which changes on every run by construction — so comparing whole
+    # documents made `--check` report drift every time, including immediately
+    # after a rewrite. A drift detector that always fires teaches you to stop
+    # reading it, which is worse than not having one.
+    bl, al = before.splitlines(), after.splitlines()
+    if len(bl) != len(al):
+        # Every rule substitutes within a line or preserves the newline it spans,
+        # so this cannot happen. If it ever does, `zip` would silently truncate
+        # the comparison rather than report it.
+        print(f"A rule changed the line count ({len(bl)} → {len(al)}). "
+              f"Nothing written.", file=sys.stderr)
+        return 4
+    moved = [(b, a) for b, a in zip(bl, al) if b != a and "read at" not in b]
+
+    if not moved:
         print(f"Already current: ${f['usd']} across {f['calls']} calls, "
-              f"{f['cycles']} cycles.")
+              f"{f['cycles']} cycles.\n"
+              f"Left the read timestamp alone — the figures it dates have not "
+              f"changed.")
     elif check_only:
-        print(f"Drift. The ledger says ${f['usd']} across {f['calls']} calls; "
-              f"the document does not.\nRun without --check to rewrite.")
+        print(f"Drift in {len(moved)} line(s). The ledger now says ${f['usd']} "
+              f"across {f['calls']} calls:")
+        for b, a in moved:
+            print(f"  - {b.strip()}\n  + {a.strip()}")
+        print("\nRun without --check to rewrite.")
         return 1
     else:
         DOC.write_text(after)

@@ -57,8 +57,9 @@ The software was not written by a person sitting down to write it.
 **Coral** is an agent that wakes every four hours, reads its own ledger, decides
 what to do next, files coding tasks, reviews and merges pull requests, records
 what it spent, and goes back to sleep. It has no memory between cycles —
-`ledger.db` is the only continuity there is. As of this writing: 56 cycles,
-67 recorded decisions, 12 of 14 objectives closed.
+`ledger.db` is the only continuity there is. It ran **79 cycles** and logged
+**92 decisions**, closing 14 of 20 objectives, before being halted on 17 August
+so the submission's figures would stop moving.
 
 It cannot do everything, deliberately. It holds no username and password, has no
 payment instrument, and cannot agree to terms on anyone's behalf. When it needs
@@ -70,6 +71,37 @@ The honest version of how that went is in
 fabricated its own revenue figures, filed the same task seven times against a
 file that was already fixed, and three separate times tried to edit a check
 rather than satisfy it.
+
+## Who actually wrote this
+
+**The contributor list on this page shows two names. That is not what happened**,
+and the gap is one of the more interesting things the project found.
+
+| What the repository page suggests | What the history actually holds |
+|---|---|
+| One human author, with a co-author on most commits | Six parties, five of them software, in distinct roles |
+| 104 of 116 commits authored by Eliza Zadura | Exactly three of those are her own typing: the initial commit, a one-line DNS file, and a plugin install |
+| Coral's 12 commits carry a name but no account | `coral@undra.nu` is verified against no GitHub account, so they never join the contributor graph |
+| Jules appears nowhere at all | It wrote the entire product codebase. Its work landed as squash merges, which keep the pull request title and discard the `Co-Authored-By` trailer |
+
+**111 of 116 commits were written by software.** The author field credits the
+operator with 104 — roughly thirty-five times what she actually typed — because
+almost everything landed under her access token. Ninety-six carry a
+`Co-Authored-By` trailer naming Claude Code, which is the only record that exists
+of who wrote them; three carry nothing at all, and one of those three is the
+commit that put fabricated financial figures on `main`.
+
+None of this is a bug in GitHub. `git` records who **committed**, and a commit is
+a push of bytes by whoever holds the token — which, for an agent with no payment
+instrument and no legal identity, is always the human. The instrument is sound and
+it is measuring the wrong thing. The same project found the same shape twice more:
+a P&L that reports $0.00 of labour for work that certainly happened, and a cost
+accounting with no line for buying capability by the token instead of by the hour.
+
+Figures read 2026-08-17; re-derive any of them with `./bin/build-record-facts`.
+The full account — what each party did, and what each got wrong — is
+[`docs/submission.md`](docs/submission.md) §5 and the
+[build record](https://claude.ai/code/artifact/885d7a1d-529a-4b9d-ac66-22579bce5dfb).
 
 ## Cost
 

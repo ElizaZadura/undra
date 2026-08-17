@@ -91,10 +91,8 @@ almost everything landed under her access token. Ninety-six carry a
 of who wrote them; three carry nothing at all, and one of those three is the
 commit that put fabricated financial figures on `main`.
 
-None of this is a bug in GitHub. `git` records who **committed**, and a commit is
-a push of bytes by whoever holds the token — which, for an agent with no payment
-instrument and no legal identity, is always the human. The instrument is sound and
-it is measuring the wrong thing. The same project found the same shape twice more:
+None of this is a bug in GitHub. `git` records author and committer identities attached to commits, not who actually performed the work represented by those commits. In this project, agents often worked through credentials and repository operations controlled by the human Operator, so those identities are a poor proxy for authorship. The instrument is sound and it is measuring the wrong thing.
+The same project found the same shape twice more:
 a P&L that reports $0.00 of labour for work that certainly happened, and a cost
 accounting with no line for buying capability by the token instead of by the hour.
 

@@ -449,6 +449,23 @@ export for project `undra-504613`, the Gemini API usage dashboard, and the ledge
 The competition asks entrants to separate human work from AI work. Naming the git authors
 answers this badly, because git records who *committed*, not who *wrote*.
 
+**The evidence behind this section is published in full.** Everything below is summarised
+from a [build record](https://claude.ai/code/artifact/885d7a1d-529a-4b9d-ac66-22579bce5dfb)
+kept throughout the twelve days: a day-by-day account, the five contributor roles and what
+each could touch, all seventy-two defects with who caused them, and the ledger totals. It
+includes the parts that do not flatter us — the fabricated financials, the two attempts to
+edit a check rather than pass it, and three defects in the record itself found on the day of
+filing. It is offered because a claim about who did what is worth little without the working,
+and because that document is where §5.3 below comes from.
+
+Two differences from this document are deliberate rather than errors. It reports **113**
+commits where §5.1 reports 112, for the reason §5.1 gives — a document cannot count the
+commit that records it, and the build record was written one commit later. And the total in its
+§1 is higher than the $20.45 in §2.1 without contradicting it: that document substitutes the
+ledger's own modelled estimate for every model call in place of the $3.18 Google actually
+billed, and says so on the line. The figure is not quoted here, because it is composed from
+ledger rows rather than being one, and this document quotes only what its auditor can check.
+
 ### 5.1 By commit
 
 | Attribution | Commits |

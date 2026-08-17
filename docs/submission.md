@@ -200,7 +200,7 @@ this section was rewritten to remove in the first place. It has been taken out r
 restated more carefully, because there is no more careful version of a number the ledger
 does not hold.
 
-What the ledger does support, read at 2026-08-17T08:57Z:
+What the ledger does support, read at 2026-08-17T09:09Z:
 
 | Recorded as | Calls |
 |---|---:|
@@ -220,6 +220,17 @@ reconciliation; only the billed figure is fixed.
 work would have cost had none of it run on the free tier, and it is the number our spend
 ceiling is enforced against, deliberately, because a budget guard should err toward stopping
 early.
+
+**What has accrued since the invoice closed, since the P&L attachment carries it as a
+separate line.** The $20.45 above is a billed-basis figure, and the invoice stops at
+10 August while the agent kept running. On an accrual basis the loss is larger. Our own
+ledger estimates the usage from 11 August onward at an upper bound of $10.21 across 473
+calls — upper, because most of those calls ran on the free key and the ledger cannot
+separate them. Google's billing console, read on 17 August, puts the billable part of that
+usage far lower; the P&L attachment carries both readings side by side rather than
+reconciling them into one, because they measure different things — what our ledger can prove
+from its own rows, and what Google will actually charge for. This document quotes only the
+ledger's figure, because the console reading is not a row in it.
 
 ### 2.2 Revenue by Month (May – August 2026)
 
@@ -443,13 +454,18 @@ answers this badly, because git records who *committed*, not who *wrote*.
 | Operator, genuinely her own typing | 3 |
 | Mechanical merges, credited to her | 2 |
 | Jules-written, credited to her | 3 |
-| Operator-directed, Claude Code-written (carry `Co-Authored-By`) | 89 |
+| Operator-directed, Claude Code-written (carry `Co-Authored-By`) | 90 |
 | Coral, autonomous | 12 |
-| **Total** | **109** |
+| **Total** | **110** |
 
-**104 of 109 commits were written by software.** Exactly three are the Operator's own typing:
+**105 of 110 commits were written by software.** Exactly three are the Operator's own typing:
 the repository initialisation, a one-line DNS file, and a plugin installation. The git author
-field credits her with 97 — roughly thirty-two times what she actually typed.
+field credits her with 98 — roughly thirty-three times what she actually typed.
+
+**These counts are read as of the commit immediately before the one that carries them**, since
+a document cannot count the commit that records it. So the repository is always one commit
+ahead of this table, and that commit is a change to this table. It is a fitting last word for
+a section about how commit counts mislead, and it is disclosed rather than rounded away.
 
 Three commits written by software carry no AI marker at all, because they landed under the
 Operator's access token as squash merges: Jules's guardrail fix, the earlier draft of this

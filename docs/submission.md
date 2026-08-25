@@ -8,6 +8,15 @@
 > and its cause are described in §5.3, because it is the most instructive thing this project
 > produced.
 
+<!-- audit:filed 2026-08-17 -->
+> **Filed 17 August 2026. The figures below are the figures as submitted, and are
+> deliberately not maintained past that point.** `bin/refresh-figures` reads the live ledger
+> and `git log`, so it will report drift against this file for ever — every commit made after
+> filing moves the commit counts, and the agent may be released again. Refreshing it would
+> make the repository disagree with the document that was actually submitted, which is worse
+> than a stale number. The script refuses to rewrite a file carrying the marker above; use
+> `--force` only if you intend to break that correspondence on purpose.
+
 ---
 
 ## 1. Project Narrative
@@ -184,7 +193,7 @@ cost to run", and a personal subscription bought before the business existed doe
 
 <!-- audit:disclosed -->
 **A note on the estimate in our own logs.** The ledger's internal estimate of total model
-spend is **$16.71** across 665 calls, computed from per-token rates transcribed from Google's
+spend is **$17.85** across 781 calls, computed from per-token rates transcribed from Google's
 pricing page and applied to metered token counts. That figure covers every call the agent
 made, on both API projects. Only one of those projects is billable: `undra-504613` carries the
 paid key, and `undra-free` carries a free-tier key whose calls cost nothing.
@@ -193,21 +202,21 @@ paid key, and `undra-free` carries a free-tier key whose calls cost nothing.
 **We cannot split that estimate between the two keys, and until 13 August this document
 claimed we could.** The ledger records the *role* a call was made in — `planning` or `ops` —
 not the key that served it. The two were meant to line up, but the runner falls back to the
-paid key when the free key stops serving mid-cycle, and 36 of 67 cycles logged doing exactly
-that; 73 of the 212 `ops` calls were made inside one. A dollar column headed "free" would
+paid key when the free key stops serving mid-cycle, and 45 of 79 cycles logged doing exactly
+that; 91 of the 257 `ops` calls were made inside one. A dollar column headed "free" would
 therefore have been a guess wearing the clothes of a reading, which is the specific failure
 this section was rewritten to remove in the first place. It has been taken out rather than
 restated more carefully, because there is no more careful version of a number the ledger
 does not hold.
 
-What the ledger does support, read at 2026-08-15T09:50Z:
+What the ledger does support, read at 2026-08-17T09:28Z:
 
 | Recorded as | Calls |
 |---|---:|
-| `planning` — paid key by design | 378 |
-| `ops` — free key by design, fell back to paid on 36 of 67 cycles | 212 |
+| `planning` — paid key by design | 449 |
+| `ops` — free key by design, fell back to paid on 45 of 79 cycles | 257 |
 | Recorded before the ledger tracked the role at all | 75 |
-| **Total** | **665** |
+| **Total** | **781** |
 
 The agent is still running, so the call counts are a reading rather than a final figure; they
 are regenerated from the ledger before submission. Google billed **$3.18** against the paid
@@ -220,6 +229,19 @@ reconciliation; only the billed figure is fixed.
 work would have cost had none of it run on the free tier, and it is the number our spend
 ceiling is enforced against, deliberately, because a budget guard should err toward stopping
 early.
+
+**What has accrued since the invoice closed, and why it is not in the P&L.** The $20.45 above
+is what has actually been paid. The invoice stops at 10 August and the agent kept running, so
+more has been incurred since: our ledger estimates the usage from 11 August onward at an upper
+bound of $10.21 across 473 calls — upper, because most of those calls ran on the free key and
+the ledger cannot separate them. Google's billing console, read on 17 August, puts the
+billable part far lower.
+
+None of that appears in the P&L statement, because the competition's template requires the
+**cash basis** — expenses recorded when cash is paid out. Unbilled usage is not a cash
+outflow, so it is excluded there and disclosed here instead. This is the one place in this
+document where our convention of overstating costs is overridden by an instruction, and we
+would rather point at the gap than let a reader find it.
 
 ### 2.2 Revenue by Month (May – August 2026)
 
@@ -436,23 +458,49 @@ export for project `undra-504613`, the Gemini API usage dashboard, and the ledge
 The competition asks entrants to separate human work from AI work. Naming the git authors
 answers this badly, because git records who *committed*, not who *wrote*.
 
+**The evidence behind this section is published in full.** Everything below is summarised
+from a [build record](https://claude.ai/code/artifact/885d7a1d-529a-4b9d-ac66-22579bce5dfb)
+kept throughout the twelve days: a day-by-day account, the five contributor roles and what
+each could touch, all seventy-two defects with who caused them, and the ledger totals. It
+includes the parts that do not flatter us — the fabricated financials, the two attempts to
+edit a check rather than pass it, and three defects in the record itself found on the day of
+filing. It is offered because a claim about who did what is worth little without the working,
+and because that document is where §5.3 below comes from.
+
+Two differences from this document are deliberate rather than errors. It reports **113**
+commits where §5.1 reports 112, for the reason §5.1 gives — a document cannot count the
+commit that records it, and the build record was written one commit later. And the total in its
+§1 is higher than the $20.45 in §2.1 without contradicting it: that document substitutes the
+ledger's own modelled estimate for every model call in place of the $3.18 Google actually
+billed, and says so on the line. The figure is not quoted here, because it is composed from
+ledger rows rather than being one, and this document quotes only what its auditor can check.
+
 ### 5.1 By commit
 
 | Attribution | Commits |
 |---|---:|
 | Operator, genuinely her own typing | 3 |
 | Mechanical merges, credited to her | 2 |
-| Jules-written, credited to her | 2 |
-| Operator-directed, Claude Code-written (carry `Co-Authored-By`) | 83 |
+| Jules-written, credited to her | 3 |
+| Operator-directed, Claude Code-written (carry `Co-Authored-By`) | 92 |
 | Coral, autonomous | 12 |
-| **Total** | **102** |
+| **Total** | **112** |
 
-**97 of 102 commits were written by software.** Exactly three are the Operator's own typing:
+**107 of 112 commits were written by software.** Exactly three are the Operator's own typing:
 the repository initialisation, a one-line DNS file, and a plugin installation. The git author
-field credits her with 90 — roughly thirty times what she actually typed.
+field credits her with 100 — roughly thirty-three times what she actually typed.
 
-Two commits written by software carry no AI marker at all, because they landed under the
-Operator's access token: Jules's guardrail fix, and the earlier draft of this document.
+**These counts are read as of the commit immediately before the one that carries them**, since
+a document cannot count the commit that records it. So the repository is always one commit
+ahead of this table, and that commit is a change to this table. It is a fitting last word for
+a section about how commit counts mislead, and it is disclosed rather than rounded away.
+
+Three commits written by software carry no AI marker at all, because they landed under the
+Operator's access token as squash merges: Jules's guardrail fix, the earlier draft of this
+document, and a 16 August edit to this section's own money figures. A squash merge keeps the
+pull request title and discards the trailer, so the only record of who wrote them is the
+commit body — which is why the row above is maintained by hand while the rest are read from
+`git log`.
 
 **Every count above begins after the human-only phase ended.** Work started on 3 August; the
 first commit is 5 August and the first ledger row 6 August. The design decisions that

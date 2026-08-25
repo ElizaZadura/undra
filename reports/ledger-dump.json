@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-17T08:17:32.028335+00:00",
+  "generated_at": "2026-08-25T11:58:54.844864+00:00",
   "note": "Redacted dump of the operating ledger. Payments detail and recipient columns are omitted; see runner/ledger.py. The authoritative ledger lives only on the lab box.",
   "tables": {
     "actions": [
@@ -1074,6 +1074,13 @@
         "ended_at": "2026-08-17T08:17:32.002788+00:00",
         "status": "ok",
         "handoff": "Cycle #79 complete. Verified live production deployment at https://undra.nu (HTTP 200 OK). Confirmed site health, Gemini API interface readiness, safety guardrail routing, and docs/submission.md audit compliance (0 errors, 1 disclosed warning). Budget status: total agent spend is $35.01 ($17.74 LLM, $17.27 other), non-agent spend $51.43, with $24.99 remaining. All open objectives monitored and intact with 11.8 hours remaining until the hard deadline (2026-08-17T20:00:00Z)."
+      },
+      {
+        "id": 80,
+        "started_at": "2026-08-25T11:58:54.259898+00:00",
+        "ended_at": "2026-08-25T11:58:54.777764+00:00",
+        "status": "halted",
+        "handoff": "HALTED at 2026-08-25T11:58:54+00:00. Reason: deadline: deadline has passed. No action taken, no model call made. Per CHARTER.md \u00a710 this cycle did not investigate the cause and did not attempt to clear the flag."
       }
     ],
     "decisions": [
@@ -17664,14 +17671,63 @@
         "level": "info",
         "source": "tool",
         "message": "finish_cycle({\"confused\": false, \"handoff\": \"Cycle #79 complete. Verified live production deployment at https://undra.nu (HTTP 200 OK). Confirmed site health, Gemini API interface readiness, safety guardrail routing, and docs/submission.md audit compliance (0 errors, 1 disclosed warning). Budget status: total ag) -> {\"status\": \"cycle_will_end\", \"handoff_recorded\": true}"
+      },
+      {
+        "id": 2239,
+        "at": "2026-08-17T08:17:32.121229+00:00",
+        "level": "info",
+        "source": "dump",
+        "message": "redacted ledger dump written: {'actions': 47, 'cycles': 79, 'decisions': 92, 'events': 2238, 'flags': 3, 'human_requests': 11, 'llm_usage': 781, 'messages': 11, 'objectives': 20, 'open_questions': 8, 'outbound': 0, 'payments': 0, 'spend': 6}"
+      },
+      {
+        "id": 2240,
+        "at": "2026-08-17T08:17:35.076101+00:00",
+        "level": "info",
+        "source": "git_push",
+        "message": "pushed HEAD to origin/main"
+      },
+      {
+        "id": 2241,
+        "at": "2026-08-17T08:17:36.873526+00:00",
+        "level": "info",
+        "source": "git_push",
+        "message": "published the operations log to origin/ops-log"
+      },
+      {
+        "id": 2242,
+        "at": "2026-08-25T11:58:49.739944+00:00",
+        "level": "info",
+        "source": "deploy_health",
+        "message": "200 https://undra.nu/api/health"
+      },
+      {
+        "id": 2243,
+        "at": "2026-08-25T11:58:49.739944+00:00",
+        "level": "warn",
+        "source": "situation_report",
+        "message": "halted=True breaches=4 unknowns=0"
+      },
+      {
+        "id": 2244,
+        "at": "2026-08-25T11:58:54.735821+00:00",
+        "level": "info",
+        "source": "digest",
+        "message": "daily digest sent to the Operator"
+      },
+      {
+        "id": 2245,
+        "at": "2026-08-25T11:58:54.811063+00:00",
+        "level": "warn",
+        "source": "cycle",
+        "message": "cycle 80 halted before any model call"
       }
     ],
     "flags": [
       {
         "key": "halt",
-        "value": "false",
-        "updated_at": "2026-08-06 13:33:24",
-        "reason": "halt-path test complete; cleared by the Operator"
+        "value": "true",
+        "updated_at": "2026-08-25T11:58:54.113265+00:00",
+        "reason": "deadline: deadline has passed"
       },
       {
         "key": "telegram_offset",
@@ -17681,8 +17737,8 @@
       },
       {
         "key": "last_digest_date",
-        "value": "2026-08-17",
-        "updated_at": "2026-08-17T04:12:19.421855+00:00",
+        "value": "2026-08-25",
+        "updated_at": "2026-08-25T11:58:54.533071+00:00",
         "reason": "last date a digest was sent to the Operator"
       }
     ],

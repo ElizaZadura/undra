@@ -98,7 +98,46 @@ Two commands, two namespaces. They are not interchangeable.
 | `approve 7` / `deny 7` | Resolves ledger request #7 |
 | `approve jules <session_id>` | Calls the Jules API and releases that plan |
 | `deny jules <session_id>` | Records your refusal; the session stays paused |
-| `/halt` or `halt` | Sets the halt flag. Stops everything. |
+| `/halt` or `halt` | Sets the halt flag. Stops everything. Replies to confirm. |
+
+**`/halt` is not instant, and since 17 August it says so.** The flag is *read*
+before every action, but it can only be *set* when a cycle starts and polls
+Telegram — so a halt sent at 09:18 with the next cycle due at 12:11 applies at
+12:11. On 17 August that happened, nothing acknowledged it, and the reasonable
+conclusion — that the command had not worked — was wrong. It had been queued
+three times over.
+
+There is now a receipt, and it names the delay rather than hiding it:
+
+```
+[undra · halt]
+
+The halt flag is set. No new actions will run and no model calls will be made.
+
+You sent it 3h 2m ago. Halt is applied when a cycle starts, not when you send
+it, so there is a delay of up to one cycle — and it has now been applied.
+
+Nothing further is needed from you. To resume, run ./bin/unhalt on the box.
+```
+
+**If you need it stopped now**, and you are at a terminal, there are two faster
+routes than waiting for a cycle:
+
+| Command | Effect |
+|---|---|
+| `./bin/halt --reason "..."` | Sets the flag immediately. Cycles still start and record themselves as `halted`. |
+| `./bin/unhalt --reason "..."` | Clears it. Refuses without a reason, because the row you overwrite is the only record of why the agent stopped. |
+| `sudo systemctl stop undra-cycle.timer` | No cycle runs at all, so no rows. Needs your own terminal. |
+
+Neither `bin/halt` nor `bin/unhalt` is in Coral's tool surface, and a test fails
+if anything naming halt ever appears there. CHARTER §10 forbids the agent
+clearing the flag; before 17 August it also had no way for *you* to clear it, and
+the last clear was done by hand-editing `ledger.db`.
+
+**Stopping the timer and setting the flag are not the same thing**, and resuming
+needs whichever you used undone. If a `/halt` is still sitting unread in Telegram
+when you restart, the next cycle will consume it and halt again — correct, and
+surprising the first time.
 
 **Exact word counts.** The parser matches two or three words and nothing else.
 `approve 7 looks good to me` matches neither pattern — it falls through and is

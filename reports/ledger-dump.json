@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-25T11:58:54.844864+00:00",
+  "generated_at": "2026-08-25T12:10:09.155821+00:00",
   "note": "Redacted dump of the operating ledger. Payments detail and recipient columns are omitted; see runner/ledger.py. The authoritative ledger lives only on the lab box.",
   "tables": {
     "actions": [
@@ -1081,6 +1081,13 @@
         "ended_at": "2026-08-25T11:58:54.777764+00:00",
         "status": "halted",
         "handoff": "HALTED at 2026-08-25T11:58:54+00:00. Reason: deadline: deadline has passed. No action taken, no model call made. Per CHARTER.md \u00a710 this cycle did not investigate the cause and did not attempt to clear the flag."
+      },
+      {
+        "id": 81,
+        "started_at": "2026-08-25T12:10:08.897813+00:00",
+        "ended_at": "2026-08-25T12:10:09.102000+00:00",
+        "status": "halted",
+        "handoff": "HALTED at 2026-08-25T12:10:09+00:00. Reason: deadline: deadline has passed. No action taken, no model call made. Per CHARTER.md \u00a710 this cycle did not investigate the cause and did not attempt to clear the flag."
       }
     ],
     "decisions": [
@@ -17720,6 +17727,55 @@
         "level": "warn",
         "source": "cycle",
         "message": "cycle 80 halted before any model call"
+      },
+      {
+        "id": 2246,
+        "at": "2026-08-25T11:58:54.938921+00:00",
+        "level": "info",
+        "source": "dump",
+        "message": "redacted ledger dump written: {'actions': 47, 'cycles': 80, 'decisions': 92, 'events': 2245, 'flags': 3, 'human_requests': 11, 'llm_usage': 781, 'messages': 11, 'objectives': 20, 'open_questions': 8, 'outbound': 0, 'payments': 0, 'spend': 6}"
+      },
+      {
+        "id": 2247,
+        "at": "2026-08-25T11:58:58.898194+00:00",
+        "level": "info",
+        "source": "git_push",
+        "message": "rebased 1 commit(s) from the remote before pushing"
+      },
+      {
+        "id": 2248,
+        "at": "2026-08-25T11:58:59.584755+00:00",
+        "level": "info",
+        "source": "git_push",
+        "message": "pushed HEAD to origin/main"
+      },
+      {
+        "id": 2249,
+        "at": "2026-08-25T11:59:01.722700+00:00",
+        "level": "info",
+        "source": "git_push",
+        "message": "published the operations log to origin/ops-log"
+      },
+      {
+        "id": 2250,
+        "at": "2026-08-25T12:10:08.611555+00:00",
+        "level": "info",
+        "source": "deploy_health",
+        "message": "200 https://undra.nu/api/health"
+      },
+      {
+        "id": 2251,
+        "at": "2026-08-25T12:10:08.611555+00:00",
+        "level": "warn",
+        "source": "situation_report",
+        "message": "halted=True breaches=2 unknowns=0"
+      },
+      {
+        "id": 2252,
+        "at": "2026-08-25T12:10:09.130312+00:00",
+        "level": "warn",
+        "source": "cycle",
+        "message": "cycle 81 halted before any model call"
       }
     ],
     "flags": [

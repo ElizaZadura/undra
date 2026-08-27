@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-27T16:11:39.996212+00:00",
+  "generated_at": "2026-08-27T20:13:09.214264+00:00",
   "note": "Redacted dump of the operating ledger. Payments detail and recipient columns are omitted; see runner/ledger.py. The authoritative ledger lives only on the lab box.",
   "tables": {
     "actions": [
@@ -1179,6 +1179,13 @@
         "ended_at": "2026-08-27T16:11:39.936840+00:00",
         "status": "halted",
         "handoff": "HALTED at 2026-08-27T16:11:39+00:00. Reason: /halt from Operator. No action taken, no model call made. Per CHARTER.md \u00a710 this cycle did not investigate the cause and did not attempt to clear the flag."
+      },
+      {
+        "id": 95,
+        "started_at": "2026-08-27T20:13:08.937342+00:00",
+        "ended_at": "2026-08-27T20:13:09.145040+00:00",
+        "status": "halted",
+        "handoff": "HALTED at 2026-08-27T20:13:09+00:00. Reason: /halt from Operator. No action taken, no model call made. Per CHARTER.md \u00a710 this cycle did not investigate the cause and did not attempt to clear the flag."
       }
     ],
     "decisions": [
@@ -18462,6 +18469,48 @@
         "level": "warn",
         "source": "cycle",
         "message": "cycle 94 halted before any model call"
+      },
+      {
+        "id": 2338,
+        "at": "2026-08-27T16:11:40.087970+00:00",
+        "level": "info",
+        "source": "dump",
+        "message": "redacted ledger dump written: {'actions': 47, 'cycles': 94, 'decisions': 92, 'events': 2337, 'flags': 3, 'human_requests': 11, 'llm_usage': 781, 'messages': 11, 'objectives': 20, 'open_questions': 8, 'outbound': 0, 'payments': 0, 'spend': 6}"
+      },
+      {
+        "id": 2339,
+        "at": "2026-08-27T16:11:43.076509+00:00",
+        "level": "info",
+        "source": "git_push",
+        "message": "pushed HEAD to origin/main"
+      },
+      {
+        "id": 2340,
+        "at": "2026-08-27T16:11:45.038754+00:00",
+        "level": "info",
+        "source": "git_push",
+        "message": "published the operations log to origin/ops-log"
+      },
+      {
+        "id": 2341,
+        "at": "2026-08-27T20:13:08.486286+00:00",
+        "level": "info",
+        "source": "deploy_health",
+        "message": "200 https://undra.nu/api/health"
+      },
+      {
+        "id": 2342,
+        "at": "2026-08-27T20:13:08.486286+00:00",
+        "level": "warn",
+        "source": "situation_report",
+        "message": "halted=True breaches=3 unknowns=0"
+      },
+      {
+        "id": 2343,
+        "at": "2026-08-27T20:13:09.180500+00:00",
+        "level": "warn",
+        "source": "cycle",
+        "message": "cycle 95 halted before any model call"
       }
     ],
     "flags": [

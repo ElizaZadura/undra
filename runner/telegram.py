@@ -101,8 +101,22 @@ class Telegram:
                                deadline=deadline, default_action=default_action))
 
     def digest(self, body: str) -> None:
-        self.send(f"[undra · daily digest]\n\n{body}\n\n"
-                  f"(automated message from the undra agent system)")
+        """Send an already-complete digest. Deliberately adds nothing.
+
+        This used to wrap the body in a `[undra · daily digest]` header and the
+        disclosure footer — both of which `digest.build()` already writes, so
+        every digest ever sent arrived with its header and its footer twice
+        over. The convention everywhere else in this codebase is that the
+        builder owns the whole message (`operator.py`, `tools.py`, and
+        `halt_receipt` below all do it that way), and `bin/status` reads
+        `build()` output directly and strips exactly one of each — so `build()`
+        is the owner, and this is the copy that has to go.
+
+        Kept as a named method rather than folded into `send()`: the call site
+        reads as sending a digest, and the outbound-table rule (AGENTS.md #2)
+        is easier to check against a method whose name says who it is for.
+        """
+        self.send(body)
 
     # -- receiving ---------------------------------------------------------- #
 

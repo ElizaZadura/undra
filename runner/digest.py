@@ -316,6 +316,10 @@ def build_halt_notice(ledger) -> str:
     out.append("To resume:  ./bin/unhalt --reason \"...\"  "
                "and  systemctl start undra-cycle.timer")
     out.append("To stop the timer for good:  systemctl disable --now undra-cycle.timer")
+    # Same convention as every other operator-facing message: the builder owns
+    # the header and the disclosure, and the sender adds nothing (CHARTER §2.4).
+    out.append("")
+    out.append("(automated message from the undra agent system)")
     return "\n".join(out)
 
 

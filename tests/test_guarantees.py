@@ -1744,6 +1744,45 @@ class HaltedDigestTest(unittest.TestCase):
         self.assertIn("send_if_due(led, cfg, tg, halted=", collapsed,
                       "cycle.py no longer tells the digest whether it is halted")
 
+    def test_a_message_carries_its_header_and_disclosure_exactly_once(self):
+        """`Telegram.digest()` wrapped the body in a `[undra · daily digest]`
+        header and the disclosure footer that `build()` had already written, so
+        every digest ever sent arrived with both twice. Nothing failed and
+        nothing looked broken enough to chase — it just read as sloppy, on the
+        one channel whose whole job is being trusted.
+
+        Asserted on the sent text, not on either function alone: the defect was
+        invisible in both halves and only existed where they met.
+        """
+        from runner import digest
+        self._halt()
+        tg = self._Tg()
+        digest.send_if_due(self.led, self._Cfg(), tg)          # halt notice
+        self.led.con.execute("UPDATE flags SET value='false' WHERE key='halt'")
+        self.led.con.commit()
+        digest.send_if_due(self.led, self._Cfg(), tg,          # daily digest
+                           hour_utc=0)
+        self.assertEqual(len(tg.sent), 1)
+        self.assertEqual(len(tg.digests), 1)
+
+        for name, text in (("halt notice", tg.sent[0]),
+                           ("daily digest", tg.digests[0])):
+            self.assertEqual(
+                text.count("(automated message from the undra agent system)"), 1,
+                f"the {name} carries the CHARTER §2.4 disclosure more than once")
+            self.assertEqual(
+                text.count("[undra · "), 1,
+                f"the {name} carries its header more than once")
+
+    def test_the_sender_adds_nothing_to_a_built_message(self):
+        """bin/status prints `build()` output directly and strips exactly one
+        header and one footer, so `build()` is the owner. A sender that decorates
+        on the way out puts the two permanently out of step."""
+        src = inspect.getsource(__import__("runner.telegram", fromlist=["x"]).Telegram.digest)
+        body = src.split('"""')[-1]
+        self.assertIn("self.send(body)", body,
+                      "Telegram.digest() decorates the message again on the way out")
+
     def test_the_operator_channel_still_polls_while_halted(self):
         """The fix must not be 'skip the whole Telegram block when halted'. The
         halt is set from the phone and has to stay reachable from it."""

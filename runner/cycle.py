@@ -175,8 +175,18 @@ def run(*, stub_model: bool = False, use_telegram: bool = True) -> int:
                 led.event("info", "telegram", f"processed {n} update(s) from the Operator")
             # CHARTER.md §9: once per day. Sent before the model runs, so a cycle
             # that later fails still reports yesterday honestly.
+            #
+            # `halted` is passed rather than read, because a watchdog halt writes
+            # no flag: situation_report.py exits 10 and this function is the only
+            # thing that knows it did. Without it, a breach-halted system would
+            # go on filing daily digests describing work it was not doing — which
+            # is what a flag-halted one did for three days from 2026-08-25.
+            #
+            # Note what is NOT skipped above: sync() still polls. The Operator's
+            # channel has to keep working while the agent is stopped, or the halt
+            # becomes unreachable from the phone that set it.
             from . import digest as _digest
-            _digest.send_if_due(led, cfg, tg)
+            _digest.send_if_due(led, cfg, tg, halted=(rc == 10 or led.is_halted()))
         except Exception as exc:  # noqa: BLE001
             led.event("warn", "telegram", f"channel unavailable: {exc}")
             tg = None

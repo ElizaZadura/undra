@@ -28,10 +28,21 @@ from datetime import datetime, timedelta, timezone
 from typing import Any
 
 DIGEST_FLAG = "last_digest_date"
+HALT_NOTICE_FLAG = "last_halt_notice"
+
+# How often a halted system repeats itself. Weekly, not daily: the point is to
+# prove the halt is still standing and the box is still alive, not to file a
+# report about work that is not happening.
+HALT_NOTICE_DAYS = 7
 
 
 def _rows(con, sql: str, *args) -> list:
     return con.execute(sql, args).fetchall()
+
+
+def _flag(ledger, key: str):
+    return ledger.con.execute(
+        "SELECT value, updated_at, reason FROM flags WHERE key=?", (key,)).fetchone()
 
 
 def build(ledger, cfg) -> str:
@@ -237,7 +248,118 @@ def mark_sent(ledger, now: datetime | None = None) -> None:
     ledger.con.commit()
 
 
-def send_if_due(ledger, cfg, telegram, *, hour_utc: int = 4) -> bool:
+def halted_since(ledger) -> str | None:
+    """When the current halt began, as an ISO string, or None if not halted.
+
+    Two sources, in order. The flag's `updated_at` is exact and is what the
+    Operator set. A watchdog halt writes no flag at all — `situation_report.py`
+    exits 10 and `cycle.py` treats that as a halt — so fall back to the start of
+    the unbroken run of halted cycles at the tail of the table.
+    """
+    row = _flag(ledger, "halt")
+    if row and str(row["value"]).lower() in ("1", "true", "yes"):
+        return row["updated_at"]
+
+    # Walk backwards from the newest cycle and stop at the first one that ran.
+    started = None
+    for c in _rows(ledger.con,
+                   "SELECT started_at, status FROM cycles ORDER BY id DESC LIMIT 500"):
+        if c["status"] != "halted":
+            break
+        started = c["started_at"]
+    return started
+
+
+def build_halt_notice(ledger) -> str:
+    """The message a stopped system sends. Deliberately not a digest.
+
+    A halted system that reports its cycles, spend and open questions in the
+    usual shape reads as a working one — which is how a stop that was in force
+    for three days looked like business as usual. This says the one thing that
+    is true (nothing is happening) and the one thing that is actionable (how to
+    resume), and nothing else.
+    """
+    now = datetime.now(timezone.utc)
+    con = ledger.con
+    since = halted_since(ledger)
+    reason = ledger.halt_reason() or "invariant breach reported by the watchdog"
+
+    out = [f"[undra · halted] {now.strftime('%Y-%m-%d %H:%M')}Z", ""]
+    out.append("Coral is halted. No model call, no action, no spend.")
+    out.append("")
+    out.append(f"  reason:  {reason}")
+    if since:
+        out.append(f"  since:   {since[:16].replace('T', ' ')}Z")
+
+    if since:
+        skipped = con.execute(
+            "SELECT COUNT(*) FROM cycles WHERE started_at >= ? AND status='halted'",
+            (since,)).fetchone()[0]
+        calls = con.execute(
+            "SELECT COUNT(*) FROM llm_usage WHERE at >= ?", (since,)).fetchone()[0]
+        acted = con.execute(
+            "SELECT COUNT(*) FROM actions WHERE at >= ?", (since,)).fetchone()[0]
+        out.append(f"  skipped: {skipped} cycle(s), {calls} model call(s), "
+                   f"{acted} action(s)")
+
+    # Still worth surfacing: a halt does not answer a question somebody asked.
+    pending = con.execute(
+        "SELECT COUNT(*) FROM human_requests WHERE status='pending'").fetchone()[0]
+    if pending:
+        out.append(f"  waiting: {pending} request(s) still pending, unanswerable "
+                   "until the halt is cleared")
+
+    out.append("")
+    out.append(f"This repeats every {HALT_NOTICE_DAYS} days while the halt stands, "
+               "so a stopped system is never silent.")
+    out.append("")
+    out.append("To resume:  ./bin/unhalt --reason \"...\"  "
+               "and  systemctl start undra-cycle.timer")
+    out.append("To stop the timer for good:  systemctl disable --now undra-cycle.timer")
+    return "\n".join(out)
+
+
+def halt_notice_due(ledger, now: datetime | None = None) -> bool:
+    """Three ways it is due, and the first two are deliberately not rate-limited.
+
+    A halt that says nothing until the weekly slot comes round is the defect
+    this function exists to fix, so the *onset* of a halt always speaks: (a) no
+    notice has ever been sent, or (b) this halt began after the last one was
+    sent, which is what makes a re-halt announce itself rather than inherit the
+    silence of the previous episode. Only (c), the recurring heartbeat, waits.
+    """
+    now = now or datetime.now(timezone.utc)
+    row = _flag(ledger, HALT_NOTICE_FLAG)
+    if not row or not row["value"]:
+        return True
+
+    last = row["value"]
+    since = halted_since(ledger)
+    if since and since > last:
+        return True
+
+    try:
+        sent = datetime.fromisoformat(last)
+    except ValueError:
+        return True
+    if sent.tzinfo is None:
+        sent = sent.replace(tzinfo=timezone.utc)
+    return (now - sent) >= timedelta(days=HALT_NOTICE_DAYS)
+
+
+def mark_halt_notice_sent(ledger, now: datetime | None = None) -> None:
+    now = now or datetime.now(timezone.utc)
+    ledger.con.execute(
+        "INSERT INTO flags(key, value, updated_at, reason) VALUES(?,?,?,?) "
+        "ON CONFLICT(key) DO UPDATE SET value=excluded.value, "
+        "updated_at=excluded.updated_at",
+        (HALT_NOTICE_FLAG, now.isoformat(), now.isoformat(),
+         "last time the Operator was told the system is still halted"))
+    ledger.con.commit()
+
+
+def send_if_due(ledger, cfg, telegram, *, hour_utc: int = 4,
+                halted: bool | None = None) -> bool:
     """Send once per day, on the first cycle at or after `hour_utc`.
 
     The threshold is not the delivery time — the timer is, and it fires at
@@ -250,8 +372,17 @@ def send_if_due(ledger, cfg, telegram, *, hour_utc: int = 4) -> bool:
     rather than trying to be clever about local time: the box is deliberately on
     UTC (LAB_SETUP.md §2.3) precisely so that scheduled work does not run twice
     or not at all across a DST changeover.
+
+    While halted, this sends the halt notice instead — see `_send_halt_notice`.
+    `halted` is passed in by the caller because a watchdog halt sets no flag:
+    `situation_report.py` exits 10 and only `cycle.py` knows it did.
     """
     now = datetime.now(timezone.utc)
+    if halted is None:
+        halted = ledger.is_halted()
+    if halted:
+        return _send_halt_notice(ledger, telegram, now, hour_utc=hour_utc)
+
     if now.hour < hour_utc or not due(ledger, now):
         return False
     try:
@@ -261,4 +392,44 @@ def send_if_due(ledger, cfg, telegram, *, hour_utc: int = 4) -> bool:
         return False
     mark_sent(ledger, now)
     ledger.event("info", "digest", "daily digest sent to the Operator")
+    return True
+
+
+def _send_halt_notice(ledger, telegram, now: datetime, *, hour_utc: int) -> bool:
+    """Why this is not just another branch of the daily digest.
+
+    Found 2026-08-28. `flags.halt` had been true since the 26th and every cycle
+    from 80 to 99 ended `halted` — zero model calls, zero actions — but the
+    Operator kept receiving a full daily digest, because this whole block runs
+    nine lines *before* cycle.py checks the flag. The digest even ended with
+    "reply /halt to stop everything" and carried a `!! HALTED` line inside the
+    usual layout, so the one message proving the stop had worked was the message
+    that made it look like it had not.
+
+    The fix is not silence. Four defects in this project were a channel saying
+    nothing when it should have spoken, and a stopped system that goes quiet is
+    the fifth of those, not a cure for the fourth. It is a different message on a
+    slower clock.
+
+    The daily digest's date stamp is deliberately not marked while halted, so the
+    first cycle after the halt clears files a real digest immediately rather than
+    skipping the day the work resumed.
+    """
+    if not halt_notice_due(ledger, now):
+        return False
+    # The onset of a halt is not made to wait for the morning slot; only the
+    # recurring heartbeat is. `halt_notice_due` is true for a first notice
+    # regardless of the hour, so the gate is applied only when one already exists.
+    seen = _flag(ledger, HALT_NOTICE_FLAG)
+    if seen and seen["value"] and now.hour < hour_utc:
+        since = halted_since(ledger)
+        if not (since and since > seen["value"]):
+            return False
+    try:
+        telegram.send(build_halt_notice(ledger))
+    except Exception as exc:  # noqa: BLE001
+        ledger.event("error", "digest", f"could not send the halt notice: {exc}")
+        return False
+    mark_halt_notice_sent(ledger, now)
+    ledger.event("info", "digest", "halt notice sent to the Operator")
     return True

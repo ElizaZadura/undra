@@ -20,7 +20,7 @@ import sys
 import tempfile
 import time
 import unittest
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
@@ -1588,6 +1588,171 @@ class HaltAcknowledgementTest(unittest.TestCase):
         # agent was stopped, so it is refused.
         self.assertIn("Refusing to clear it without --reason",
                       (root / "bin" / "unhalt").read_text())
+
+
+class HaltedDigestTest(unittest.TestCase):
+    """A halted system must not file a daily report about work it is not doing.
+
+    Found 2026-08-28, eleven days after the halt that was meant to freeze the
+    submission figures. `flags.halt` was true, cycles 80–99 all ended `halted`,
+    and there were zero model calls and zero actions — and the Operator was still
+    getting a full daily digest every morning, because `digest.send_if_due()` is
+    called nine lines before `cycle.py` checks the flag. The digest carried a
+    `!! HALTED` line inside its normal layout and signed off with "reply /halt to
+    stop everything", so the only evidence that the stop had worked was formatted
+    exactly like evidence that it had not.
+
+    This is the fifth of the channel defects and the first one inverted. The other
+    four were a channel staying silent when it should have spoken — undelivered
+    approvals, discarded Jules replies, unacknowledged notes, a stop button that
+    said nothing back. So the fix cannot be silence, which would just be a sixth:
+    it is a different message on a slower clock.
+    """
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        path = str(Path(self.tmp.name) / "ledger.db")
+        con = sqlite3.connect(path)
+        con.executescript(_schema())
+        con.commit()
+        con.close()
+        self.led = Ledger(path)
+        self.addCleanup(self.tmp.cleanup)
+        self.addCleanup(self.led.close)
+
+    class _Tg:
+        def __init__(self, fail=False):
+            self.sent, self.digests, self.fail = [], [], fail
+
+        def send(self, text):
+            if self.fail:
+                raise RuntimeError("network is down")
+            self.sent.append(text)
+
+        def digest(self, body):
+            self.digests.append(body)
+
+    class _Cfg:
+        hours_remaining = 12.0
+        rates = {"max_unproductive_cycles_per_day": 3,
+                 "max_cycles_without_progress": 3}
+        budget = {"hard_cap_total": 100, "cap_llm": 50}
+
+    def _halt(self, at="2026-08-26T08:11:42+00:00", reason="/halt from Operator"):
+        self.led.con.execute(
+            "INSERT INTO flags(key, value, updated_at, reason) VALUES('halt',?,?,?) "
+            "ON CONFLICT(key) DO UPDATE SET value=excluded.value, "
+            "updated_at=excluded.updated_at, reason=excluded.reason",
+            ("true", at, reason))
+        self.led.con.commit()
+
+    def test_a_halted_system_sends_no_daily_digest(self):
+        from runner import digest
+        self._halt()
+        tg = self._Tg()
+        digest.send_if_due(self.led, self._Cfg(), tg)
+        self.assertEqual(tg.digests, [],
+                         "a halted system filed a daily digest of work it did not do")
+
+    def test_a_halted_system_still_says_something(self):
+        """Silence from a stopped system is the defect this project already fixed
+        four times on other channels. It must not be reintroduced as the cure."""
+        from runner import digest
+        self._halt()
+        tg = self._Tg()
+        self.assertTrue(digest.send_if_due(self.led, self._Cfg(), tg))
+        self.assertEqual(len(tg.sent), 1)
+        self.assertIn("halted", tg.sent[0].lower())
+
+    def test_the_notice_says_how_to_resume(self):
+        from runner import digest
+        self._halt()
+        body = digest.build_halt_notice(self.led)
+        self.assertIn("bin/unhalt", body)
+        self.assertIn("/halt from Operator", body)
+
+    def test_the_notice_does_not_invite_another_halt(self):
+        """The digest's sign-off is 'reply /halt to stop everything'. On an
+        already-halted system that is the single most misleading line available:
+        it is an offer to do the thing that has already been done."""
+        from runner import digest
+        self._halt()
+        self.assertNotIn("/halt to stop", digest.build_halt_notice(self.led))
+
+    def test_the_notice_does_not_repeat_every_cycle(self):
+        from runner import digest
+        self._halt()
+        tg = self._Tg()
+        digest.send_if_due(self.led, self._Cfg(), tg)
+        second = self._Tg()
+        digest.send_if_due(self.led, self._Cfg(), second)
+        self.assertEqual(second.sent, [], "the halt notice repeated on the next cycle")
+
+    def test_the_notice_repeats_once_the_interval_has_passed(self):
+        from runner import digest
+        self._halt()
+        digest.send_if_due(self.led, self._Cfg(), self._Tg())
+        stale = (datetime.now(timezone.utc)
+                 - timedelta(days=digest.HALT_NOTICE_DAYS, minutes=1))
+        self.led.con.execute("UPDATE flags SET value=? WHERE key=?",
+                             (stale.isoformat(), digest.HALT_NOTICE_FLAG))
+        self.led.con.commit()
+        tg = self._Tg()
+        digest.send_if_due(self.led, self._Cfg(), tg)
+        self.assertEqual(len(tg.sent), 1, "the halt heartbeat stopped beating")
+
+    def test_a_new_halt_announces_itself_immediately(self):
+        """Otherwise a halt set the day after a notice inherits the previous
+        episode's silence and says nothing for a week."""
+        from runner import digest
+        self._halt()
+        digest.send_if_due(self.led, self._Cfg(), self._Tg())
+        self.led.con.execute("UPDATE flags SET value='false' WHERE key='halt'")
+        self.led.con.commit()
+        self._halt(at=datetime.now(timezone.utc).isoformat(),
+                   reason="second halt, hours later")
+        tg = self._Tg()
+        digest.send_if_due(self.led, self._Cfg(), tg)
+        self.assertEqual(len(tg.sent), 1, "a fresh halt said nothing")
+        self.assertIn("second halt", tg.sent[0])
+
+    def test_a_watchdog_halt_counts_even_though_it_sets_no_flag(self):
+        """situation_report.py exits 10 without writing to `flags`, so a system
+        stopped by an invariant breach reads as un-halted here. Only cycle.py
+        knows, which is why it passes the state in rather than leaving it to be
+        read."""
+        from runner import digest
+        tg = self._Tg()
+        digest.send_if_due(self.led, self._Cfg(), tg, halted=True)
+        self.assertEqual(tg.digests, [], "a watchdog-halted system filed a digest")
+        self.assertEqual(len(tg.sent), 1)
+
+    def test_the_daily_digest_is_not_marked_sent_while_halted(self):
+        """Otherwise the day the halt clears is the one day with no digest — and
+        that is the day with something to report."""
+        from runner import digest
+        self._halt()
+        digest.send_if_due(self.led, self._Cfg(), self._Tg())
+        self.assertTrue(digest.due(self.led),
+                        "the halt consumed the day's digest slot")
+
+    def test_the_halt_state_reaches_the_digest_from_the_cycle(self):
+        """The call site is the guarantee. Reading the flag inside send_if_due()
+        is not enough on its own, because a watchdog halt does not set it."""
+        src = (Path(__file__).resolve().parents[1] / "runner" / "cycle.py").read_text()
+        collapsed = " ".join(src.split())
+        self.assertIn("send_if_due(led, cfg, tg, halted=", collapsed,
+                      "cycle.py no longer tells the digest whether it is halted")
+
+    def test_the_operator_channel_still_polls_while_halted(self):
+        """The fix must not be 'skip the whole Telegram block when halted'. The
+        halt is set from the phone and has to stay reachable from it."""
+        src = (Path(__file__).resolve().parents[1] / "runner" / "cycle.py").read_text()
+        sync_at = src.index("sync(tg, led)")
+        check_at = src.index("if rc == 10 or led.is_halted():")
+        self.assertLess(sync_at, check_at,
+                        "polling moved below the halt check; the Operator can no "
+                        "longer reach a halted system from Telegram")
 
 
 class SubmissionTotalsTest(unittest.TestCase):

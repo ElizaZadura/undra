@@ -127,7 +127,15 @@ routes than waiting for a cycle:
 |---|---|
 | `./bin/halt --reason "..."` | Sets the flag immediately. Cycles still start and record themselves as `halted`. |
 | `./bin/unhalt --reason "..."` | Clears it. Refuses without a reason, because the row you overwrite is the only record of why the agent stopped. |
-| `sudo systemctl stop undra-cycle.timer` | No cycle runs at all, so no rows. Needs your own terminal. |
+| `sudo systemctl stop undra-cycle.timer` | No cycle runs at all, so no rows. Needs your own terminal. **Does not survive a reboot.** |
+| `sudo systemctl disable --now undra-cycle.timer` | The same, and it stays stopped across reboots. This is the one you want for a long stop. |
+
+**`stop` is not `disable`, and the difference is a reboot.** The timer was stopped
+on 17 August but left `enabled`. `red` rebooted on 25 August, systemd started the
+timer again because that is what `enabled` means, and cycles resumed every four
+hours for three days. Nothing bad happened — the flag was set and every one of
+them halted before a model call — but nobody had decided the system should be
+running, and it was.
 
 Neither `bin/halt` nor `bin/unhalt` is in Coral's tool surface, and a test fails
 if anything naming halt ever appears there. CHARTER §10 forbids the agent
@@ -138,6 +146,30 @@ the last clear was done by hand-editing `ledger.db`.
 needs whichever you used undone. If a `/halt` is still sitting unread in Telegram
 when you restart, the next cycle will consume it and halt again — correct, and
 surprising the first time.
+
+### What a halted system sends you
+
+**While the halt stands you get one short notice, not the daily digest.** It names
+the reason, when the halt began, and how many cycles have been skipped without a
+model call, action or spend — and it repeats every seven days so you can tell a
+stopped system from a dead box.
+
+Until 28 August you got the full daily digest instead. `digest.send_if_due()` runs
+nine lines before `cycle.py` checks the halt flag, so a system that had made zero
+model calls since the 26th filed a normal-looking morning brief every day, ending
+with *"reply /halt to stop everything"* — an offer to do the thing already done.
+The one message proving the stop had worked was formatted like proof that it had
+not.
+
+The fix is deliberately not silence. Four defects in this project were a channel
+saying nothing when it should have spoken, and a stopped system that goes quiet
+would be the fifth. Read against CHARTER §9 — *what happened, what it cost, what
+you decided, what is blocked* — the notice is that digest, honestly rendered when
+all four answers are "nothing", and rate-limited to match.
+
+The daily digest's date stamp is not marked while halted, so the first cycle after
+you clear the flag files a real digest straight away rather than skipping the day
+the work resumed.
 
 **Exact word counts.** The parser matches two or three words and nothing else.
 `approve 7 looks good to me` matches neither pattern — it falls through and is
